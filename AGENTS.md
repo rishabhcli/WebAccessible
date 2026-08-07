@@ -10,9 +10,18 @@ Primary source of truth is:
 
 - `webaccessible-spec.md` (behavioral spec, architecture, and demo commitments)
 
+Current execution-provider addendum:
+
+- `docs/sponsors/BROWSERBASE.md` supersedes the spec's local MV3/localhost topology. Browserbase Browser Sessions, CDP, and interactive Live View are the only production/demo browser path; autonomous Browserbase Agent actions are prohibited.
+
+Execution source:
+
+- `IMPLEMENTATION_PLAN.md` (component contracts, implementation order, gates, and verification)
+
 Supporting docs:
 
 - `README.md` (project summary and contributor handoff)
+- `SPONSORS.md` and `docs/sponsors/` (live integration claims and evidence requirements)
 
 ## Design and product constraints
 

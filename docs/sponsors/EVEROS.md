@@ -17,9 +17,15 @@ EverOS is the persistent memory layer that converts an expensive teach run into 
 
 ## Live paths to implement
 
+### Current SDK ownership adapter
+
+The current `everos-cloud` SDK separates user-owned and agent-owned memory. Use `user_id` for `profile`, `atomic_fact`, and completion/user context. Use a stable per-user agent ID, `webaccessible:{user_id}`, for `agent_case` and `agent_skill`. The adapter keeps that API distinction inside the EverOS integration so the rest of WebAccessible can still address Margaret's routines by user.
+
+This is verified against the installed live SDK: `get('agent_skill', user_id=...)` returns a validation error, while `get('agent_skill', agent_id='webaccessible')` succeeds.
+
 ### Task start
 
-FastAPI searches profile/facts/skills with the user's phrasing and retrieves the routine list. A fuzzy match may offer the likely routine, but must not initiate an irreversible action or bypass user confirmation.
+FastAPI searches profile/facts/skills with the user's phrasing and retrieves the routine list through the ownership adapter. A fuzzy match may offer the likely routine, but must not initiate an irreversible action or bypass user confirmation.
 
 ### Teach run to replayable skill
 

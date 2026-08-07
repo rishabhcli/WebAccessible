@@ -1,6 +1,6 @@
 # Sponsors Utilization Guide
 
-This document summarizes how WebAccessible uses each named sponsor in the current build plan.
+This document summarizes how WebAccessible uses each named sponsor in the current build plan, plus the required Browserbase execution provider.
 
 ## 1) Snowflake
 
@@ -58,6 +58,23 @@ EverOS is the mechanism that makes replay cheap and reliable, turning first-run 
 - Keep build/deploy plan aligned with submission timing and visible proof expectations.
 - Ensure deliverables reflect the event context, including concise sponsor-focused narrative.
 
+## 4) Browserbase
+
+**Role in product:** the only managed browser environment in which WebAccessible browses target sites.
+
+### How Browserbase is used
+
+- Create and retain a managed Browserbase Browser Session for each active task.
+- Drive the session through CDP for navigation, sanitized DOM/accessibility observation, verified highlighting, and page-state checks.
+- Embed Browserbase Live View so Margaret performs every page click, text entry, submit, and irreversible confirmation herself.
+- Stop each Browserbase session explicitly when the task ends.
+
+### Non-negotiable boundary
+
+- Browserbase autonomous Agent capabilities are not used: they would conflict with the product's user-control promise.
+- No local Chromium, extension-controlled local browser, or fixture may substitute for the Browserbase path in a production or demo claim.
+- Browserbase free-plan/session limits must be surfaced as a blocked provider state rather than replaced with a local run.
+
 ## Cross-sponsor execution principles
 
 - No sponsor claim is presented unless backed by behavior in the live backend path.
@@ -70,4 +87,4 @@ EverOS is the mechanism that makes replay cheap and reliable, turning first-run 
 - [ ] Cold run and replay run cost differences are computed from real session rows.
 - [ ] Skill creation uses the EverOS case/flush flow.
 - [ ] Sponsor mentions in demos include what each brings to the build, not generic praise.
-
+- [ ] Browserbase session and Live View evidence shows that the cold and warm runs occurred in a managed cloud browser, with explicit stop evidence.
