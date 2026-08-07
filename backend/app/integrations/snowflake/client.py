@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Mapping, Sequence
+import logging
+import threading
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -16,6 +18,8 @@ from snowflake.connector import errors as snowflake_errors
 
 from backend.app.config import Settings
 from backend.app.contracts.models import ProviderReadiness, ProviderState
+
+logger = logging.getLogger(__name__)
 
 
 class SnowflakeErrorCode(StrEnum):
@@ -64,6 +68,160 @@ class _TableSpec:
     key: str
     columns: frozenset[str]
     variant_columns: frozenset[str] = frozenset()
+
+
+@dataclass(slots=True)
+class PoolStats:
+    """Observable pool counters used by readiness and tests."""
+
+    opened: int = 0
+    reused: int = 0
+    discarded: int = 0
+    idle: int = 0
+    leased: int = 0
+
+
+class SnowflakeConnectionPool:
+    """A bounded, thread-safe pool of authenticated Snowflake connections.
+
+    A Snowflake login costs roughly half a second to several seconds. Opening one per
+    query put that cost on the guidance hot path twice per step and once per telemetry
+    outbox row. Connections are therefore leased, returned, and reused until they go
+    idle past ``max_idle_seconds`` or a call proves them unusable.
+    """
+
+    __slots__ = (
+        "_acquire_timeout",
+        "_closed",
+        "_condition",
+        "_factory",
+        "_idle",
+        "_leased",
+        "_max_idle_seconds",
+        "_max_size",
+        "_stats",
+    )
+
+    def __init__(
+        self,
+        factory: Callable[[], Any],
+        *,
+        max_size: int = 4,
+        max_idle_seconds: float = 240.0,
+        acquire_timeout_seconds: float = 30.0,
+    ) -> None:
+        if max_size <= 0:
+            raise ValueError("max_size must be positive")
+        if max_idle_seconds <= 0:
+            raise ValueError("max_idle_seconds must be positive")
+        if acquire_timeout_seconds <= 0:
+            raise ValueError("acquire_timeout_seconds must be positive")
+        self._factory = factory
+        self._max_size = max_size
+        self._max_idle_seconds = max_idle_seconds
+        self._acquire_timeout = acquire_timeout_seconds
+        self._idle: list[tuple[Any, float]] = []
+        self._leased = 0
+        self._closed = False
+        self._condition = threading.Condition(threading.Lock())
+        self._stats = PoolStats()
+
+    @property
+    def stats(self) -> PoolStats:
+        with self._condition:
+            return PoolStats(
+                opened=self._stats.opened,
+                reused=self._stats.reused,
+                discarded=self._stats.discarded,
+                idle=len(self._idle),
+                leased=self._leased,
+            )
+
+    def acquire(self) -> Any:
+        """Lease a live connection, opening one only when the pool has spare capacity."""
+
+        deadline = monotonic() + self._acquire_timeout
+        while True:
+            with self._condition:
+                if self._closed:
+                    raise SnowflakeProviderError(
+                        SnowflakeErrorCode.UNREACHABLE,
+                        "The Snowflake connection pool is closed.",
+                        retryable=False,
+                    )
+                now = monotonic()
+                while self._idle:
+                    connection, released_at = self._idle.pop()
+                    if now - released_at > self._max_idle_seconds or _is_closed(connection):
+                        self._stats.discarded += 1
+                        _close_quietly(connection)
+                        continue
+                    self._leased += 1
+                    self._stats.reused += 1
+                    return connection
+                if self._leased < self._max_size:
+                    self._leased += 1
+                    break
+                remaining = deadline - now
+                if remaining <= 0 or not self._condition.wait(remaining):
+                    raise SnowflakeProviderError(
+                        SnowflakeErrorCode.TIMEOUT,
+                        "No Snowflake connection became available before the timeout.",
+                        retryable=True,
+                    )
+
+        try:
+            connection = self._factory()
+        except BaseException:
+            with self._condition:
+                self._leased -= 1
+                self._condition.notify()
+            raise
+        with self._condition:
+            self._stats.opened += 1
+        return connection
+
+    def release(self, connection: Any, *, reusable: bool) -> None:
+        """Return a leased connection, discarding it when it can no longer be trusted."""
+
+        with self._condition:
+            self._leased -= 1
+            if reusable and not self._closed and not _is_closed(connection):
+                self._idle.append((connection, monotonic()))
+                connection = None
+            else:
+                self._stats.discarded += 1
+            self._condition.notify()
+        if connection is not None:
+            _close_quietly(connection)
+
+    def close(self) -> None:
+        """Close every idle connection and refuse new leases."""
+
+        with self._condition:
+            self._closed = True
+            idle = [connection for connection, _ in self._idle]
+            self._idle.clear()
+            self._condition.notify_all()
+        for connection in idle:
+            _close_quietly(connection)
+
+
+def _is_closed(connection: Any) -> bool:
+    checker = getattr(connection, "is_closed", None)
+    if not callable(checker):
+        return False
+    try:
+        return bool(checker())
+    except Exception:
+        return True
+
+
+def _close_quietly(connection: Any) -> None:
+    try:
+        connection.close()
+    except Exception:
+        logger.debug("Discarding a Snowflake connection that could not be closed cleanly.")
 
 
 _TABLE_SPECS: Final = {
@@ -366,10 +524,25 @@ _KIND_ALIASES: Final = {
 class SnowflakeAdapter:
     """Live Snowflake query, outbox sync, cost view, and Cortex primitive adapter."""
 
-    __slots__ = ("_settings",)
+    __slots__ = ("_pool", "_settings")
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
+        self._pool = SnowflakeConnectionPool(
+            lambda: snowflake.connector.connect(**self._connection_parameters()),
+            max_size=settings.snowflake_max_connections,
+            max_idle_seconds=settings.snowflake_connection_max_idle_seconds,
+            acquire_timeout_seconds=float(settings.snowflake_login_timeout_seconds),
+        )
+
+    @property
+    def pool_stats(self) -> PoolStats:
+        return self._pool.stats
+
+    async def close(self) -> None:
+        """Release pooled Snowflake connections during shutdown."""
+
+        await asyncio.to_thread(self._pool.close)
 
     async def readiness(self) -> ProviderReadiness:
         if not self._settings.snowflake_configured:
@@ -573,17 +746,190 @@ class SnowflakeAdapter:
             ),
         )
 
+    async def count_and_complete(
+        self,
+        model: str,
+        prompt: str,
+        *,
+        model_parameters: Mapping[str, Any],
+        response_format: Mapping[str, Any],
+    ) -> tuple[SnowflakeScalarResult, SnowflakeScalarResult]:
+        """Measure input tokens and generate the completion in one round trip.
+
+        The token estimate and the completion were previously two sequential statements,
+        which doubled warehouse round trips on the guidance hot path. Snowflake evaluates
+        both Cortex functions inside one statement, so the estimate stays a real
+        ``AI_COUNT_TOKENS`` measurement of the exact prompt that was billed.
+        """
+
+        encoded_format = json.dumps(response_format, separators=(",", ":"))
+        result = await self.query(
+            """
+            SELECT
+              AI_COUNT_TOKENS(
+                  'ai_complete', %s, %s, TO_OBJECT(PARSE_JSON(%s))
+              ) AS input_tokens,
+              AI_COMPLETE(
+                  model => %s,
+                  prompt => %s,
+                  model_parameters => TO_OBJECT(PARSE_JSON(%s)),
+                  response_format => TO_OBJECT(PARSE_JSON(%s)),
+                  show_details => TRUE
+              ) AS completion
+            """,
+            (
+                model,
+                prompt,
+                encoded_format,
+                model,
+                prompt,
+                json.dumps(model_parameters, separators=(",", ":")),
+                encoded_format,
+            ),
+        )
+        if not result.rows:
+            raise SnowflakeProviderError(
+                SnowflakeErrorCode.INVALID_RESPONSE,
+                "Snowflake returned no Cortex result.",
+                retryable=False,
+                query_id=result.query_id,
+            )
+        row = result.rows[0]
+        return (
+            SnowflakeScalarResult(row.get("input_tokens"), result.query_id),
+            SnowflakeScalarResult(row.get("completion"), result.query_id),
+        )
+
+    async def ai_complete_text(
+        self,
+        model: str,
+        prompt: str,
+        *,
+        max_tokens: int = 256,
+        temperature: float = 0.0,
+    ) -> SnowflakeScalarResult:
+        """Return plain Cortex text for narration paths that need no structured schema."""
+
+        return await self.scalar(
+            """
+            SELECT AI_COMPLETE(
+                model => %s,
+                prompt => %s,
+                model_parameters => TO_OBJECT(PARSE_JSON(%s))
+            ) AS completion
+            """,
+            (
+                model,
+                prompt,
+                json.dumps(
+                    {"temperature": temperature, "max_tokens": max_tokens},
+                    separators=(",", ":"),
+                ),
+            ),
+        )
+
+    async def ai_classify(
+        self,
+        text: str,
+        categories: Sequence[str],
+        *,
+        task_description: str | None = None,
+    ) -> SnowflakeScalarResult:
+        """Classify untrusted page text into one supplied category with Cortex AI_CLASSIFY."""
+
+        if not text.strip():
+            raise ValueError("text must not be blank")
+        labels = [label.strip() for label in categories if label.strip()]
+        if len(labels) < 2:
+            raise ValueError("at least two categories are required")
+        config: dict[str, Any] = {"output_mode": "single"}
+        if task_description:
+            config["task_description"] = task_description
+        return await self.scalar(
+            """
+            SELECT AI_CLASSIFY(
+                %s,
+                PARSE_JSON(%s),
+                TO_OBJECT(PARSE_JSON(%s))
+            ) AS classification
+            """,
+            (
+                text,
+                json.dumps(labels, separators=(",", ":")),
+                json.dumps(config, separators=(",", ":")),
+            ),
+        )
+
+    async def ai_embed(self, model: str, text: str) -> SnowflakeScalarResult:
+        """Return a Cortex AI_EMBED vector used for routine phrasing similarity."""
+
+        if not text.strip():
+            raise ValueError("text must not be blank")
+        return await self.scalar(
+            "SELECT AI_EMBED(%s, %s) AS embedding",
+            (model, text),
+        )
+
+    async def ai_embed_similarity(
+        self,
+        model: str,
+        query: str,
+        candidates: Sequence[str],
+    ) -> list[tuple[str, float]]:
+        """Rank candidate routine names against a spoken phrase inside Snowflake.
+
+        Embedding and cosine similarity both run server-side in one statement so the
+        vectors never cross the network, and the ranking stays reproducible for evidence.
+        """
+
+        if not query.strip():
+            raise ValueError("query must not be blank")
+        unique_candidates = list(dict.fromkeys(text for text in candidates if text.strip()))
+        if not unique_candidates:
+            return []
+        result = await self.query(
+            """
+            WITH probe AS (
+              SELECT AI_EMBED(%s, %s) AS vector
+            ),
+            candidate AS (
+              SELECT value::string AS label, AI_EMBED(%s, value::string) AS vector
+              FROM TABLE(FLATTEN(input => PARSE_JSON(%s)))
+            )
+            SELECT candidate.label AS label,
+                   VECTOR_COSINE_SIMILARITY(candidate.vector, probe.vector) AS similarity
+            FROM candidate, probe
+            ORDER BY similarity DESC
+            """,
+            (
+                model,
+                query,
+                model,
+                json.dumps(unique_candidates, separators=(",", ":")),
+            ),
+        )
+        ranked: list[tuple[str, float]] = []
+        for row in result.rows:
+            label = row.get("label")
+            similarity = row.get("similarity")
+            if isinstance(label, str) and similarity is not None:
+                try:
+                    ranked.append((label, float(similarity)))
+                except (TypeError, ValueError):
+                    continue
+        return ranked
+
     def _execute_sync(
         self,
         sql: str,
         parameters: Sequence[Any] | Mapping[str, Any] | None,
         fetch: bool,
     ) -> SnowflakeQueryResult:
-        connection = None
+        connection = self._pool.acquire()
         cursor = None
         query_id: str | None = None
+        reusable = True
         try:
-            connection = snowflake.connector.connect(**self._connection_parameters())
             cursor = connection.cursor()
             execute_parameters = dict(parameters) if isinstance(parameters, Mapping) else parameters
             cursor.execute(sql, execute_parameters)
@@ -601,12 +947,18 @@ class SnowflakeAdapter:
                 row_count=len(rows) if fetch else max(affected_rows, 0),
             )
         except Exception as exc:
-            raise _map_error(exc, query_id=query_id) from exc
+            error = _map_error(exc, query_id=query_id)
+            # A rejected statement leaves the session usable; a transport or auth failure
+            # does not, so that connection must not go back into the pool.
+            reusable = error.code is SnowflakeErrorCode.INVALID_RESPONSE
+            raise error from exc
         finally:
             if cursor is not None:
-                cursor.close()
-            if connection is not None:
-                connection.close()
+                try:
+                    cursor.close()
+                except Exception:
+                    reusable = False
+            self._pool.release(connection, reusable=reusable)
 
     def _connection_parameters(self) -> dict[str, Any]:
         settings = self._settings
@@ -627,7 +979,9 @@ class SnowflakeAdapter:
             "application": "WEBACCESSIBLE",
             "login_timeout": settings.snowflake_login_timeout_seconds,
             "network_timeout": settings.snowflake_network_timeout_seconds,
-            "client_session_keep_alive": False,
+            # Pooled connections outlive a single statement, so the connector must
+            # heartbeat the session instead of letting the auth token lapse.
+            "client_session_keep_alive": True,
             "session_parameters": {"QUERY_TAG": "webaccessible"},
         }
 

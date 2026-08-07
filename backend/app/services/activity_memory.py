@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import logging
+import re
 import statistics
 from calendar import monthrange
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Final
 from urllib.parse import urlsplit
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -21,13 +23,65 @@ from backend.app.contracts.models import (
 )
 from backend.app.persistence.repository import OperationalRepository
 
+logger = logging.getLogger(__name__)
+
+_INTERVALS: Final = {
+    RecurrenceKind.DAILY: timedelta(days=1),
+    RecurrenceKind.WEEKLY: timedelta(days=7),
+    RecurrenceKind.MONTHLY: timedelta(days=30),
+}
+_LEADS: Final = {
+    RecurrenceKind.DAILY: timedelta(hours=2),
+    RecurrenceKind.WEEKLY: timedelta(hours=24),
+    RecurrenceKind.MONTHLY: timedelta(days=3),
+}
+# How far past the expected time a routine has to slip before the suggestion is
+# phrased as a lapse ("you last did this a month ago") instead of a due-soon nudge.
+_LAPSED_AFTER: Final = {
+    RecurrenceKind.DAILY: timedelta(hours=12),
+    RecurrenceKind.WEEKLY: timedelta(days=2),
+    RecurrenceKind.MONTHLY: timedelta(days=5),
+}
+_WORD: Final = re.compile(r"[a-z0-9]+")
+_GENERIC_TASK_WORDS: Final = frozenset(
+    {"the", "a", "an", "my", "for", "and", "of", "to", "with", "on", "at", "in", "online"}
+)
+
+
+def _significant_terms(text: str) -> set[str]:
+    return {
+        word
+        for word in _WORD.findall(text.casefold())
+        if word not in _GENERIC_TASK_WORDS and len(word) > 2
+    }
+
+
+def _spoken_gap(delta: timedelta) -> str:
+    days = max(delta.days, 0)
+    if days <= 1:
+        return "yesterday"
+    if days < 14:
+        return f"{days} days ago"
+    if days < 45:
+        return "about a month ago"
+    if days < 340:
+        return f"about {max(round(days / 30), 2)} months ago"
+    return "over a year ago"
+
 
 class ActivityMemoryService:
     """Consent-gated activity capture, deterministic pattern inference, and EverOS summaries."""
 
-    def __init__(self, repository: OperationalRepository, everos: Any) -> None:
+    def __init__(
+        self,
+        repository: OperationalRepository,
+        everos: Any,
+        *,
+        max_overdue_intervals: float = 3.0,
+    ) -> None:
         self.repository = repository
         self.everos = everos
+        self.max_overdue_intervals = max_overdue_intervals
 
     def consent(self, participant_session_id: UUID | str) -> tuple[bool, bool, str]:
         participant = self.repository.get_participant(participant_session_id)
@@ -106,6 +160,39 @@ class ActivityMemoryService:
             self.repository.mark_session_activity_synced(session.id, synced=False)
             return
         self.repository.mark_session_activity_synced(session.id, synced=True)
+        if matching_pattern is not None:
+            await self._sync_foresight(session.user_id, matching_pattern, summary)
+
+    async def _sync_foresight(
+        self,
+        user_id: str,
+        pattern: RoutinePattern,
+        summary: Mapping[str, Any],
+    ) -> None:
+        """Persist the inferred timing as EverOS `foresight` memory.
+
+        The pattern is inferred locally and deterministically, but the product's proactive
+        nudges are documented as EverOS foresight memory, so the same statement has to
+        exist there for the caregiver-readable record and for cross-device recall.
+        """
+
+        save = getattr(self.everos, "save_foresight", None)
+        if save is None:
+            return
+        try:
+            await save(
+                user_id,
+                pattern.model_dump(mode="json"),
+                last_completed_at=str(summary.get("ended_at") or "") or None,
+            )
+        except Exception:
+            # Foresight is an enrichment of an already-persisted episode. Losing it must
+            # not fail the completion path or retract the activity sync that succeeded.
+            logger.warning(
+                "Could not store the inferred timing pattern for task %s in EverOS foresight "
+                "memory; the local pattern remains authoritative.",
+                pattern.task_id,
+            )
 
     def patterns(self, user_id: str) -> list[RoutinePattern]:
         starts = self.repository.list_activities(user_id, activity_type="task_started")
@@ -200,18 +287,19 @@ class ActivityMemoryService:
         if not memory_enabled or not reminders_enabled:
             return []
         current = (now or datetime.now(UTC)).astimezone(UTC)
-        by_task = {self._task_id(routine.name): routine for routine in routines}
         reminders: list[ProactiveReminder] = []
         for pattern in self.patterns(user_id):
-            routine = by_task.get(pattern.task_id)
+            routine = self._match_routine(pattern, routines)
             if routine is None:
                 continue
-            lead = {
-                RecurrenceKind.DAILY: timedelta(hours=2),
-                RecurrenceKind.WEEKLY: timedelta(hours=24),
-                RecurrenceKind.MONTHLY: timedelta(days=3),
-            }[pattern.recurrence]
+            interval = _INTERVALS[pattern.recurrence]
+            lead = _LEADS[pattern.recurrence]
             if current < pattern.next_due_at - lead:
+                continue
+            overdue = current - pattern.next_due_at
+            # A routine that slipped several whole cycles is no longer a timely nudge, and
+            # repeating it forever would be the nagging the interaction model forbids.
+            if overdue > interval * self.max_overdue_intervals:
                 continue
             reminder_id = self._reminder_id(user_id, pattern)
             action = self.repository.get_reminder_action(reminder_id, user_id)
@@ -221,23 +309,76 @@ class ActivityMemoryService:
                 snoozed_until = action.get("snoozed_until")
                 if snoozed_until and current < datetime.fromisoformat(str(snoozed_until)):
                     continue
-            local_due = pattern.next_due_at.astimezone(self._zone(pattern.timezone))
-            local_time = f"{int(local_due.strftime('%I'))}:{local_due.strftime('%M %p')}"
-            reason = (
-                f"You usually start {pattern.task_name} around {local_time} "
-                f"{pattern.recurrence.value}; would you like to start it?"
-            )
             reminders.append(
                 ProactiveReminder(
                     id=reminder_id,
                     routine=routine,
-                    reason=reason,
+                    reason=self._reason(pattern, overdue),
                     due_at=pattern.next_due_at,
                     pattern=pattern,
+                    overdue_days=max(overdue.days, 0),
                     can_start_guidance=True,
                 )
             )
         return reminders
+
+    def _reason(self, pattern: RoutinePattern, overdue: timedelta) -> str:
+        """Phrase one calm suggestion that says why it appeared."""
+
+        local_due = pattern.next_due_at.astimezone(self._zone(pattern.timezone))
+        local_time = f"{int(local_due.strftime('%I'))}:{local_due.strftime('%M %p')}"
+        cadence = {
+            RecurrenceKind.DAILY: "each day",
+            RecurrenceKind.WEEKLY: "each week",
+            RecurrenceKind.MONTHLY: "each month",
+        }[pattern.recurrence]
+        if overdue >= _LAPSED_AFTER[pattern.recurrence]:
+            elapsed = _spoken_gap(overdue + _INTERVALS[pattern.recurrence])
+            reason = (
+                f"You last did {pattern.task_name} {elapsed}, and you usually do it "
+                f"{cadence}. Would you like to do it now?"
+            )
+        else:
+            reason = (
+                f"You usually start {pattern.task_name} around {local_time} {cadence}, "
+                f"based on {pattern.occurrence_count} times I have seen. "
+                "Would you like to start it?"
+            )
+        return reason[:240]
+
+    def _match_routine(
+        self,
+        pattern: RoutinePattern,
+        routines: Sequence[RoutineSummary],
+    ) -> RoutineSummary | None:
+        """Pair an inferred pattern with a confirmed routine.
+
+        The pattern's task id is a hash of the task name observed locally, while the
+        routine name comes back from EverOS skill distillation, which rewords it. Exact
+        hashing alone therefore silently dropped reminders, so name normalization and then
+        token overlap are tried before giving up.
+        """
+
+        for routine in routines:
+            if self._task_id(routine.name) == pattern.task_id:
+                return routine
+        wanted = _significant_terms(pattern.task_name)
+        if not wanted:
+            return None
+        best: RoutineSummary | None = None
+        best_score = 0.0
+        for routine in routines:
+            available = _significant_terms(routine.name)
+            if not available:
+                continue
+            shared = wanted & available
+            if not shared:
+                continue
+            score = len(shared) / len(wanted | available)
+            if score > best_score:
+                best_score = score
+                best = routine
+        return best if best_score >= 0.5 else None
 
     @staticmethod
     def _task_id(task_name: str) -> str:

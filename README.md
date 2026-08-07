@@ -280,6 +280,7 @@ uv sync --frozen --all-groups
 pnpm install --frozen-lockfile
 uv run ruff check backend
 uv run mypy backend
+uv run pytest
 pnpm typecheck
 pnpm build
 ```

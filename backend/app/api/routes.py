@@ -60,6 +60,7 @@ from backend.app.contracts.models import (
 from backend.app.dependencies import AppContainer
 from backend.app.integrations.everos import EverOSErrorCode, EverOSProviderError
 from backend.app.services.auth import AuthenticatedParticipant
+from backend.app.services.event_hub import user_topic
 
 router = APIRouter()
 
@@ -101,8 +102,10 @@ def require_caregiver(who: AuthenticatedParticipant) -> None:
 
 
 def invalidate_cached_skill(
-    app: AppContainer, skill: SkillDocument, provider_skill_id: str
+    app: AppContainer, skill: SkillDocument, provider_skill_id: str, user_id: str
 ) -> None:
+    app.orchestrator.invalidate_routines(user_id)
+    app.recall.invalidate(user_id)
     cached_skills = getattr(app.orchestrator, "_skills", None)
     if not isinstance(cached_skills, dict):
         return
@@ -127,6 +130,10 @@ async def health() -> HealthResponse:
 
 @router.get("/ready", response_model=ReadinessResponse)
 async def ready(app: Annotated[AppContainer, Depends(container)]) -> ReadinessResponse:
+    return cast(ReadinessResponse, await app.cached_readiness(lambda: _probe_readiness(app)))
+
+
+async def _probe_readiness(app: AppContainer) -> ReadinessResponse:
     settings = app.settings
     browser_active = bool(app.browser._runtimes)  # noqa: SLF001
     browserbase = ProviderReadiness(
@@ -147,29 +154,33 @@ async def ready(app: Annotated[AppContainer, Depends(container)]) -> ReadinessRe
             else "Browserbase session listing was authorized during startup reconciliation."
         ),
     )
-    try:
-        if not settings.everos_configured:
-            raise RuntimeError("unconfigured")
-        await asyncio.wait_for(app.everos.list_routines("webaccessible-readiness"), timeout=20)
-        everos = ProviderReadiness(
-            state=ProviderState.AUTHORIZED,
-            configured=True,
-            reachable=True,
-            authorized=True,
-            last_checked_at=datetime.now(UTC),
-            detail="EverOS memory reads are authorized.",
-        )
-    except Exception as error:
-        everos = ProviderReadiness(
-            state=ProviderState.UNCONFIGURED
-            if not settings.everos_configured
-            else ProviderState.UNAVAILABLE,
-            configured=settings.everos_configured,
-            last_checked_at=datetime.now(UTC),
-            error_code=type(error).__name__,
-            detail="EverOS memory is not currently reachable.",
-        )
-    snowflake = await app.snowflake.readiness()
+
+    async def probe_everos() -> ProviderReadiness:
+        try:
+            if not settings.everos_configured:
+                raise RuntimeError("unconfigured")
+            await asyncio.wait_for(app.everos.list_routines("webaccessible-readiness"), timeout=20)
+            return ProviderReadiness(
+                state=ProviderState.AUTHORIZED,
+                configured=True,
+                reachable=True,
+                authorized=True,
+                last_checked_at=datetime.now(UTC),
+                detail="EverOS memory reads are authorized.",
+            )
+        except Exception as error:
+            return ProviderReadiness(
+                state=ProviderState.UNCONFIGURED
+                if not settings.everos_configured
+                else ProviderState.UNAVAILABLE,
+                configured=settings.everos_configured,
+                last_checked_at=datetime.now(UTC),
+                error_code=type(error).__name__,
+                detail="EverOS memory is not currently reachable.",
+            )
+
+    # Both probes are live network calls, so they run together rather than in series.
+    everos, snowflake = await asyncio.gather(probe_everos(), app.snowflake.readiness())
     model = snowflake.model_copy(
         update={"detail": "Snowflake Cortex guidance follows Snowflake service readiness."}
     )
@@ -360,6 +371,56 @@ async def session_stream(
     return EventSourceResponse(events(), headers={"Cache-Control": "no-store"})
 
 
+@router.get("/v1/stream")
+async def participant_stream(
+    request: Request,
+    app: Annotated[AppContainer, Depends(container)],
+    access_token: str | None = Query(default=None),
+    authorization: str | None = Header(default=None),
+) -> EventSourceResponse:
+    """Stream participant-scoped notices, including proactive routine reminders.
+
+    The session stream only exists once a task is underway. A reminder has to reach the
+    participant before that, so it is delivered here for the whole visit.
+    """
+
+    token = access_token or (authorization.removeprefix("Bearer ").strip() if authorization else "")
+    try:
+        who = app.auth.verify(token)
+    except (PermissionError, ValueError) as error:
+        raise HTTPException(status_code=401, detail=str(error)) from error
+
+    async def events() -> AsyncIterator[dict[str, str]]:
+        memory_enabled, reminders_enabled, _ = app.orchestrator.activity_memory.consent(
+            who.participant_session_id
+        )
+        yield {
+            "event": "stream_ready",
+            "data": json.dumps(
+                {
+                    "type": "stream_ready",
+                    "user_id": who.user_id,
+                    "activity_memory_enabled": memory_enabled,
+                    "proactive_reminders_enabled": reminders_enabled,
+                },
+                separators=(",", ":"),
+            ),
+        }
+        await app.proactive.attach(who.user_id, who.participant_session_id)
+        try:
+            async for event in app.event_hub.subscribe(user_topic(who.user_id)):
+                if await request.is_disconnected():
+                    break
+                yield {
+                    "event": event.get("type", "message"),
+                    "data": json.dumps(event, separators=(",", ":"), default=str),
+                }
+        finally:
+            await app.proactive.detach(who.user_id)
+
+    return EventSourceResponse(events(), headers={"Cache-Control": "no-store"})
+
+
 @router.get("/v1/routines", response_model=list[RoutineSummary])
 async def list_routines(
     who: Annotated[AuthenticatedParticipant, Depends(participant)],
@@ -373,15 +434,10 @@ async def list_reminders(
     who: Annotated[AuthenticatedParticipant, Depends(participant)],
     app: Annotated[AppContainer, Depends(container)],
 ) -> ReminderListResponse:
-    routines = await app.orchestrator.list_routines(who.user_id)
     memory_enabled, reminders_enabled, _ = app.orchestrator.activity_memory.consent(
         who.participant_session_id
     )
-    reminders = app.orchestrator.activity_memory.reminders(
-        user_id=who.user_id,
-        participant_session_id=who.participant_session_id,
-        routines=routines,
-    )
+    reminders = await _current_reminders(who, app)
     return ReminderListResponse(
         reminders=reminders,
         activity_memory_enabled=memory_enabled,
@@ -409,6 +465,9 @@ async def dismiss_reminder(
         acted_at=now,
         snoozed_until=now + timedelta(minutes=body.snooze_minutes),
     )
+    # Clearing the announced marker lets the same suggestion return once the snooze
+    # lapses, instead of being suppressed for the rest of the visit.
+    app.proactive.forget(who.user_id, reminder.id)
     return ReminderActionResponse(reminder_id=reminder.id, status="dismissed")
 
 
@@ -451,12 +510,7 @@ async def _current_reminders(
     who: AuthenticatedParticipant,
     app: AppContainer,
 ) -> list[ProactiveReminder]:
-    routines = await app.orchestrator.list_routines(who.user_id)
-    return app.orchestrator.activity_memory.reminders(
-        user_id=who.user_id,
-        participant_session_id=who.participant_session_id,
-        routines=routines,
-    )
+    return await app.orchestrator.reminders(who.user_id, who.participant_session_id)
 
 
 @router.post("/v1/tasks:resolve", response_model=TaskResolveResponse)
@@ -596,7 +650,7 @@ async def revise_skill(
                 "EverOS returned an invalid skill revision; the local skill cache was not changed."
             ),
         )
-    invalidate_cached_skill(app, current, skill_id)
+    invalidate_cached_skill(app, current, skill_id, who.user_id)
     return saved
 
 
@@ -618,7 +672,7 @@ async def delete_skill(
         await app.everos.delete_skill(who.user_id, skill_id)
     except Exception as error:
         raise skill_operation_unavailable(error, "selective skill deletion") from error
-    invalidate_cached_skill(app, current, skill_id)
+    invalidate_cached_skill(app, current, skill_id, who.user_id)
     return SkillDeleteResponse(skill_id=skill_id)
 
 

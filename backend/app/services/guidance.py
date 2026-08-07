@@ -24,6 +24,7 @@ from backend.app.contracts.models import (
 from backend.app.domain.safety import SafetyPolicy
 from backend.app.persistence.repository import OperationalRepository
 from backend.app.services.cost_calculator import ActualTokenUsage, CostCalculator
+from backend.app.services.scam_shield import ScamShieldService
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,7 @@ class GuidanceService:
         rate_card_version: str,
         cost_calculator: CostCalculator,
         source_environment: str,
+        scam_shield: ScamShieldService | None = None,
     ) -> None:
         self.model_adapter = model_adapter
         self.browser = browser
@@ -57,6 +59,7 @@ class GuidanceService:
         self.rate_card_version = rate_card_version
         self.cost_calculator = cost_calculator
         self.source_environment = source_environment
+        self.scam_shield = scam_shield
 
     async def decide(
         self,
@@ -124,9 +127,14 @@ class GuidanceService:
                 )
             if not safety.allowed:
                 assert safety.presentation is not None
+                presentation = await self._sharpen_pause(
+                    safety.presentation,
+                    candidates=candidates,
+                    escalate=safety.should_escalate,
+                )
                 return self._pause(
                     session,
-                    safety.presentation,
+                    presentation,
                     decision,
                     candidate,
                     escalate=safety.should_escalate,
@@ -175,6 +183,38 @@ class GuidanceService:
                 blocked=True,
                 unavailable_code=type(error).__name__,
             )
+
+    async def _sharpen_pause(
+        self,
+        presentation: SafetyPresentation,
+        *,
+        candidates: list[ElementCandidate],
+        escalate: bool,
+    ) -> SafetyPresentation:
+        """Name the specific risky request behind an escalating pause.
+
+        Only escalating pauses reach the classifier, which is exactly the unfamiliar-page
+        and suspicious-classification path. Ordinary money confirmations on a known site
+        keep their existing wording and add no latency.
+        """
+
+        if not escalate or self.scam_shield is None:
+            return presentation
+        page_text = " ".join(
+            part
+            for candidate in candidates[:24]
+            for part in (candidate.accessible_name, candidate.visible_text)
+            if part
+        )
+        verdict = await self.scam_shield.triage(page_text)
+        if verdict is None:
+            return presentation
+        return presentation.model_copy(
+            update={
+                "message": f"Let's pause a moment. {verdict.message} I've let your helper know.",
+                "scam_category": verdict.category,
+            }
+        )
 
     def _pause(
         self,

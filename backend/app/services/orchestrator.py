@@ -3,9 +3,12 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from inspect import isawaitable
+from time import monotonic
 from typing import Any
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
@@ -22,6 +25,7 @@ from backend.app.contracts.models import (
     EventType,
     GuidanceDecision,
     GuidanceMode,
+    ProactiveReminder,
     RoutineSummary,
     SelectorBundle,
     SelectorSpec,
@@ -46,10 +50,13 @@ from backend.app.services.activity_memory import ActivityMemoryService
 from backend.app.services.completion import CompletionService
 from backend.app.services.event_hub import SessionEventHub
 from backend.app.services.guidance import GuidanceResult, GuidanceService
+from backend.app.services.recall import RecallService
 from backend.app.services.repair import RepairService
 from backend.app.services.replay import ReplayEngine
 from backend.app.services.route_recorder import RouteRecorder
 from backend.app.services.stuck_detector import StuckDetector, StuckReason
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -75,6 +82,11 @@ class SessionOrchestrator:
         demo_fallback_url: str,
         build_commit: str,
         source_environment: str,
+        recall: RecallService | None = None,
+        routine_cache_seconds: float = 20.0,
+        max_overdue_intervals: float = 3.0,
+        embedder: Any = None,
+        embedding_model: str | None = None,
     ) -> None:
         self.repository = repository
         self.browser = browser
@@ -87,17 +99,27 @@ class SessionOrchestrator:
         self.demo_fallback_url = demo_fallback_url
         self.build_commit = build_commit
         self.source_environment = source_environment
+        self.recall = recall
+        self.routine_cache_seconds = routine_cache_seconds
+        self.embedder = embedder
+        self.embedding_model = embedding_model
         self.stuck = StuckDetector()
         self.route_recorder = RouteRecorder(repository)
         self.replay = ReplayEngine()
         self.repair = RepairService()
         self.safety_policy = SafetyPolicy()
-        self.activity_memory = ActivityMemoryService(repository, everos)
+        self.activity_memory = ActivityMemoryService(
+            repository,
+            everos,
+            max_overdue_intervals=max_overdue_intervals,
+        )
         self._locks: dict[UUID, asyncio.Lock] = {}
         self._active: dict[UUID, ActiveStep] = {}
         self._skills: dict[UUID, SkillDocument] = {}
         self._commands: dict[UUID, BackendCommand] = {}
         self._pending_selector_attempts: dict[UUID, str] = {}
+        self._routine_cache: dict[str, tuple[float, list[RoutineSummary]]] = {}
+        self._routine_locks: dict[str, asyncio.Lock] = {}
 
     def create_session(
         self,
@@ -411,27 +433,92 @@ class SessionOrchestrator:
             return await self._apply_guidance_result(session, result, reason)
 
     async def list_routines(self, user_id: str) -> list[RoutineSummary]:
-        routines: list[RoutineSummary] = []
-        try:
-            raw = await self._maybe_await(self.everos.list_routines(user_id))
-            routines = [
-                item if isinstance(item, RoutineSummary) else RoutineSummary.model_validate(item)
-                for item in (raw or [])
-            ]
-        except Exception:
-            routines = []
-        starter = RoutineSummary(
-            id="starter:w3c-sandwich",
-            name=self.demo_target_name,
-            description="A harmless public W3C task that can be completed and remembered.",
-            start_url=self.demo_target_url,
-            source="starter",
-        )
-        if not any(item.start_url == starter.start_url for item in routines):
-            routines.append(starter)
+        """Return confirmed routines, reusing a recent EverOS read.
+
+        The reminder, dismiss, accept, and task-start paths all need this list, and each
+        cold call is a network read. A short cache keeps the interaction immediate while
+        staying well inside one participant visit.
+        """
+
+        cached = self._cached_routines(user_id)
+        if cached is not None:
+            return cached
+        async with self._routine_lock(user_id):
+            cached = self._cached_routines(user_id)
+            if cached is not None:
+                return cached
+            routines: list[RoutineSummary] = []
+            try:
+                raw = await self._maybe_await(self.everos.list_routines(user_id))
+                routines = [
+                    item
+                    if isinstance(item, RoutineSummary)
+                    else RoutineSummary.model_validate(item)
+                    for item in (raw or [])
+                ]
+            except Exception:
+                routines = []
+            starter = RoutineSummary(
+                id="starter:w3c-sandwich",
+                name=self.demo_target_name,
+                description="A harmless public W3C task that can be completed and remembered.",
+                start_url=self.demo_target_url,
+                source="starter",
+            )
+            if not any(item.start_url == starter.start_url for item in routines):
+                routines.append(starter)
+            if self.routine_cache_seconds > 0:
+                self._routine_cache[user_id] = (
+                    monotonic() + self.routine_cache_seconds,
+                    routines,
+                )
+            return routines
+
+    def invalidate_routines(self, user_id: str) -> None:
+        """Drop the cached routine list after skill memory changes."""
+
+        self._routine_cache.pop(user_id, None)
+
+    def _cached_routines(self, user_id: str) -> list[RoutineSummary] | None:
+        entry = self._routine_cache.get(user_id)
+        if entry is None:
+            return None
+        expires_at, routines = entry
+        if expires_at <= monotonic():
+            self._routine_cache.pop(user_id, None)
+            return None
         return routines
 
+    def _routine_lock(self, user_id: str) -> asyncio.Lock:
+        lock = self._routine_locks.get(user_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._routine_locks[user_id] = lock
+        return lock
+
+    async def reminders(
+        self,
+        user_id: str,
+        participant_session_id: UUID | str,
+    ) -> list[ProactiveReminder]:
+        """Return the consented reminders that are currently due for this participant."""
+
+        routines = await self.list_routines(user_id)
+        return self.activity_memory.reminders(
+            user_id=user_id,
+            participant_session_id=participant_session_id,
+            routines=routines,
+        )
+
     async def resolve_routines(self, user_id: str, query: str) -> TaskResolveResponse:
+        """Match a spoken phrase to confirmed routines.
+
+        Provider skill search runs first. When it returns nothing, the participant's own
+        `atomic_fact` vocabulary is used to expand the phrase before local ranking, because
+        an older adult's words for a task ("the light bill") rarely match the distilled
+        routine name.
+        """
+
         try:
             raw = await self._maybe_await(self.everos.search_routines(user_id, query))
             routines = [
@@ -442,15 +529,87 @@ class SessionOrchestrator:
             routines = []
         if not routines:
             all_routines = await self.list_routines(user_id)
-            words = {word.casefold() for word in query.split() if len(word) > 2}
-            routines = sorted(
-                all_routines,
-                key=lambda item: sum(word in item.name.casefold() for word in words),
-                reverse=True,
-            )[:3]
+            routines = await self._rank_routines(user_id, query, all_routines)
         return TaskResolveResponse(query=query, routines=routines)
 
+    async def _rank_routines(
+        self,
+        user_id: str,
+        query: str,
+        routines: Sequence[RoutineSummary],
+    ) -> list[RoutineSummary]:
+        vocabulary = ""
+        resolve_aliases = getattr(self.everos, "resolve_aliases", None)
+        if resolve_aliases is not None:
+            try:
+                aliases = await self._maybe_await(resolve_aliases(user_id, query))
+                if isinstance(aliases, list):
+                    vocabulary = " ".join(str(alias) for alias in aliases[:6])
+            except Exception:
+                vocabulary = ""
+        words = {word.casefold() for word in f"{query} {vocabulary}".split() if len(word) > 2}
+        scored = sorted(
+            routines,
+            key=lambda item: sum(word in item.name.casefold() for word in words),
+            reverse=True,
+        )
+        if scored and any(
+            word in scored[0].name.casefold() for word in words
+        ):
+            return scored[:3]
+        semantic = await self._semantic_routines(query, routines)
+        return semantic or scored[:3]
+
+    async def _semantic_routines(
+        self,
+        query: str,
+        routines: Sequence[RoutineSummary],
+    ) -> list[RoutineSummary]:
+        """Rank routines by Cortex embedding similarity when no word matched.
+
+        Word overlap fails on the phrasing this product exists to serve — a participant
+        asking for "the light bill" when the routine is named "Pay electric bill". This
+        runs only after lexical matching and alias expansion both found nothing, so the
+        common path never waits on an embedding call.
+        """
+
+        if self.embedder is None or self.embedding_model is None:
+            return []
+        similarity = getattr(self.embedder, "ai_embed_similarity", None)
+        if similarity is None:
+            return []
+        by_name = {routine.name: routine for routine in routines}
+        try:
+            ranked = await self._maybe_await(
+                similarity(self.embedding_model, query, list(by_name)),
+            )
+        except Exception:
+            logger.warning("Cortex routine similarity was unavailable; keeping word ranking.")
+            return []
+        if not isinstance(ranked, list):
+            return []
+        matches: list[RoutineSummary] = []
+        for entry in ranked:
+            if not isinstance(entry, tuple) or len(entry) != 2:
+                continue
+            label, score = entry
+            routine = by_name.get(str(label))
+            if routine is not None and float(score) >= 0.6:
+                matches.append(routine)
+        return matches[:3]
+
     async def answer_episode(self, user_id: str, query: str) -> EpisodeAnswer:
+        """Answer a spoken recall question from remembered activity."""
+
+        if self.recall is not None:
+            try:
+                return await self.recall.answer(
+                    user_id,
+                    query,
+                    patterns=self.activity_memory.patterns(user_id),
+                )
+            except Exception:
+                logger.exception("Grounded recall failed; falling back to provider episode read.")
         try:
             raw = await self._maybe_await(self.everos.answer_episode(user_id, query))
             if isinstance(raw, EpisodeAnswer):

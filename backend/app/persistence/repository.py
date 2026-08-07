@@ -318,6 +318,42 @@ class OperationalRepository:
             "outcome": outcome or "incomplete",
         }
 
+    def task_history(self, user_id: str, *, limit: int = 50) -> list[dict[str, Any]]:
+        """Return one row per remembered task with its first, last, and completion timing.
+
+        This is the locally durable half of recall. EverOS remains the narrative memory,
+        but its extraction and indexing are asynchronous, so a question asked seconds
+        after a task finishes still has to be answerable from the operational ledger.
+        """
+
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT
+                  task_id,
+                  MAX(task_name) AS task_name,
+                  MAX(timezone) AS timezone,
+                  MIN(occurred_at) AS first_seen_at,
+                  MAX(occurred_at) AS last_seen_at,
+                  MAX(CASE WHEN activity_type = 'task_started' THEN occurred_at END)
+                    AS last_started_at,
+                  MAX(CASE WHEN outcome = 'completed' THEN occurred_at END)
+                    AS last_completed_at,
+                  COUNT(DISTINCT CASE WHEN activity_type = 'task_started' THEN session_id END)
+                    AS start_count,
+                  COUNT(DISTINCT CASE WHEN outcome = 'completed' THEN session_id END)
+                    AS completion_count,
+                  MAX(CASE WHEN outcome IS NOT NULL THEN outcome END) AS last_outcome
+                FROM activity_observations
+                WHERE user_id = ?
+                GROUP BY task_id
+                ORDER BY last_seen_at DESC
+                LIMIT ?
+                """,
+                (user_id, limit),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def mark_session_activity_synced(self, session_id: UUID | str, *, synced: bool) -> None:
         with self._lock, self._connection:
             self._connection.execute(

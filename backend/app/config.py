@@ -72,6 +72,18 @@ class Settings(BaseSettings):
     snowflake_schema: str | None = None
     snowflake_login_timeout_seconds: int = Field(default=30, gt=0, le=120)
     snowflake_network_timeout_seconds: int = Field(default=60, gt=0, le=300)
+    snowflake_max_connections: int = Field(default=4, ge=1, le=32)
+    snowflake_connection_max_idle_seconds: float = Field(default=240.0, gt=0, le=3600)
+
+    readiness_cache_seconds: float = Field(default=10.0, ge=0, le=120)
+    routine_cache_seconds: float = Field(default=20.0, ge=0, le=300)
+
+    recall_model: str = "claude-haiku-4-5"
+    recall_cache_seconds: float = Field(default=15.0, ge=0, le=300)
+    recall_embedding_model: str = "snowflake-arctic-embed-m-v1.5"
+
+    proactive_scan_interval_seconds: float = Field(default=60.0, ge=5, le=3600)
+    proactive_max_overdue_intervals: float = Field(default=3.0, ge=1, le=12)
 
     guidance_model_provider: Literal["snowflake_cortex"] = "snowflake_cortex"
     guidance_model: str = "claude-haiku-4-5"
@@ -89,6 +101,8 @@ class Settings(BaseSettings):
         "everos_project_id",
         "guidance_model",
         "guidance_model_rate_card_version",
+        "recall_model",
+        "recall_embedding_model",
     )
     @classmethod
     def reject_blank_values(cls, value: str) -> str:

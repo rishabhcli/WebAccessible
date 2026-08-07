@@ -54,8 +54,33 @@ export function RoutineChooser({ participant, onStart, onStartReminder, starting
 
   useEffect(() => {
     void loadReminders();
-    const timer = window.setInterval(() => void loadReminders(), 60_000);
-    return () => window.clearInterval(timer);
+  }, [loadReminders]);
+
+  // Reminders are pushed on the participant stream, so a suggestion that becomes due
+  // arrives on its own. The refresh below is only a reconnect-safety net.
+  useEffect(() => {
+    const controller = new AbortController();
+    let reconnect: number | undefined;
+    const subscribe = () => {
+      void api
+        .streamParticipant(controller.signal, (reminder) => {
+          setReminders((current) =>
+            current.some((item) => item.id === reminder.id) ? current : [...current, reminder],
+          );
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (controller.signal.aborted) return;
+          reconnect = window.setTimeout(subscribe, 5_000);
+        });
+    };
+    subscribe();
+    const refresh = window.setInterval(() => void loadReminders(), 300_000);
+    return () => {
+      controller.abort();
+      if (reconnect !== undefined) window.clearTimeout(reconnect);
+      window.clearInterval(refresh);
+    };
   }, [loadReminders]);
 
   const dismissReminder = async (reminderId: string) => {

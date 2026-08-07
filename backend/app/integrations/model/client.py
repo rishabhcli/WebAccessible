@@ -90,12 +90,7 @@ class CortexGuidanceAdapter:
         response_format = {"type": "json", "schema": schema}
         started = monotonic()
         try:
-            estimate = await self._snowflake.count_ai_complete_tokens(
-                self._model,
-                prompt,
-                response_format,
-            )
-            completion = await self._snowflake.ai_complete(
+            estimate, completion = await self._snowflake.count_and_complete(
                 self._model,
                 prompt,
                 model_parameters={

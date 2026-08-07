@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Awaitable, Callable
+from time import monotonic
 from typing import Any
 
 from backend.app.browser.controller import BrowserController
@@ -17,6 +20,9 @@ from backend.app.services.cost_calculator import CostCalculator
 from backend.app.services.event_hub import SessionEventHub
 from backend.app.services.guidance import GuidanceService
 from backend.app.services.orchestrator import SessionOrchestrator
+from backend.app.services.proactive import ProactiveReminderScheduler
+from backend.app.services.recall import RecallService
+from backend.app.services.scam_shield import ScamShieldService
 from backend.app.services.telemetry import TelemetryService
 
 
@@ -64,8 +70,20 @@ class AppContainer:
             rate_card_version=self.settings.guidance_model_rate_card_version,
             cost_calculator=CostCalculator(self.snowflake),
             source_environment=self.settings.app_env.value,
+            scam_shield=(
+                ScamShieldService(self.snowflake)
+                if self.settings.snowflake_configured
+                else None
+            ),
         )
         self.completion = CompletionService(self.browser, "w3c_sandwich_choices_selected")
+        self.recall = RecallService(
+            everos=self.everos,
+            snowflake=self.snowflake,
+            repository=self.repository,
+            model=self.settings.recall_model,
+            cache_seconds=self.settings.recall_cache_seconds,
+        )
         self.orchestrator = SessionOrchestrator(
             repository=self.repository,
             browser=self.browser,
@@ -78,6 +96,16 @@ class AppContainer:
             demo_fallback_url=str(self.settings.demo_fallback_url),
             build_commit=self.settings.build_commit,
             source_environment=self.settings.app_env.value,
+            recall=self.recall,
+            routine_cache_seconds=self.settings.routine_cache_seconds,
+            max_overdue_intervals=self.settings.proactive_max_overdue_intervals,
+            embedder=self.snowflake if self.settings.snowflake_configured else None,
+            embedding_model=self.settings.recall_embedding_model,
+        )
+        self.proactive = ProactiveReminderScheduler(
+            orchestrator=self.orchestrator,
+            event_hub=self.event_hub,
+            scan_interval_seconds=self.settings.proactive_scan_interval_seconds,
         )
 
         async def handle_browser_event(event: EventEnvelope) -> None:
@@ -85,6 +113,8 @@ class AppContainer:
 
         self.browser.set_event_sink(handle_browser_event)
         self.telemetry: TelemetryService | None = None
+        self._readiness_cache: tuple[float, Any] | None = None
+        self._readiness_lock = asyncio.Lock()
 
     async def start(self) -> None:
         if self.settings.browserbase_configured:
@@ -99,9 +129,39 @@ class AppContainer:
             await self.telemetry.start()
         except RuntimeError:
             self.telemetry = None
+        await self.proactive.start()
+
+    async def cached_readiness(self, build: Callable[[], Awaitable[Any]]) -> Any:
+        """Serve readiness from a short cache.
+
+        The app polls readiness every 30 seconds and each probe is a live provider call.
+        Caching collapses concurrent and repeated polls into one round of probes.
+        """
+
+        ttl = self.settings.readiness_cache_seconds
+        if ttl <= 0:
+            return await build()
+        cached = self._readiness_cache
+        if cached is not None and cached[0] > monotonic():
+            return cached[1]
+        async with self._readiness_lock:
+            cached = self._readiness_cache
+            if cached is not None and cached[0] > monotonic():
+                return cached[1]
+            value = await build()
+            self._readiness_cache = (monotonic() + ttl, value)
+            return value
 
     async def close(self) -> None:
+        await self.proactive.stop()
         await self.browser.stop_all()
         if self.telemetry is not None:
             await self.telemetry.stop()
+        await self.snowflake.close()
+        closer = getattr(self.everos, "close", None)
+        if closer is not None:
+            try:
+                await closer()
+            except Exception:
+                pass
         self.repository.close()

@@ -6,8 +6,6 @@ export interface ParticipantSessionInput {
   role: ParticipantRole;
   caregiver_name?: string;
   caregiver_mobile?: string;
-  access_code?: string;
-  invite_token?: string;
   preferences?: {
     reading_size: ReadingSize;
     voice_enabled: boolean;
@@ -66,6 +64,7 @@ export interface ProactiveReminder {
   recurrence: "daily" | "weekly" | "monthly";
   typicalLocalTime: string;
   occurrenceCount: number;
+  overdueDays: number;
   permissionRequired: true;
 }
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -85,7 +86,15 @@ class EverOSSearchResult:
 class EverOSProvider:
     """Translate a WebAccessible user into EverOS user-owned and agent-owned scopes."""
 
-    __slots__ = ("_api_key", "_app_id", "_host", "_project_id", "_timeout")
+    __slots__ = (
+        "_api_key",
+        "_app_id",
+        "_client",
+        "_client_lock",
+        "_host",
+        "_project_id",
+        "_timeout",
+    )
 
     def __init__(self, settings: Settings) -> None:
         if settings.everos_api_key is None:
@@ -99,6 +108,42 @@ class EverOSProvider:
         self._app_id = settings.everos_app_id
         self._project_id = settings.everos_project_id
         self._timeout = settings.everos_timeout_seconds
+        self._client: EverOS | None = None
+        self._client_lock = threading.Lock()
+
+    def _shared_client(self) -> EverOS:
+        """Return the process-wide EverOS client.
+
+        The SDK transport is a thread-safe ``urllib3.PoolManager``. Building a client per
+        call threw away its warm keep-alive pool and paid a fresh TLS handshake on every
+        memory read, which is the hot path for recall and routine listing.
+        """
+
+        client = self._client
+        if client is not None:
+            return client
+        with self._client_lock:
+            if self._client is None:
+                self._client = EverOS(
+                    self._api_key,
+                    host=self._host,
+                    app_id=self._app_id,
+                    project_id=self._project_id,
+                    timeout=self._timeout,
+                )
+            return self._client
+
+    def close(self) -> None:
+        """Close the shared EverOS transport during shutdown."""
+
+        with self._client_lock:
+            client = self._client
+            self._client = None
+        if client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
 
     @staticmethod
     def agent_id_for(user_id: str) -> str:
@@ -457,14 +502,7 @@ class EverOSProvider:
 
     async def _call(self, operation: str, *args: Any, **kwargs: Any) -> Any:
         def invoke() -> Any:
-            with EverOS(
-                self._api_key,
-                host=self._host,
-                app_id=self._app_id,
-                project_id=self._project_id,
-                timeout=self._timeout,
-            ) as client:
-                return getattr(client, operation)(*args, **kwargs)
+            return getattr(self._shared_client(), operation)(*args, **kwargs)
 
         try:
             return await asyncio.to_thread(invoke)
@@ -501,6 +539,9 @@ class EverOSAdapter:
 
     def __init__(self, settings: Settings) -> None:
         self._provider = EverOSProvider(settings)
+
+    async def close(self) -> None:
+        await asyncio.to_thread(self._provider.close)
 
     async def update_profile(
         self,
@@ -592,9 +633,119 @@ class EverOSAdapter:
             "flush": _operation_receipt(flushed.data),
         }
 
+    async def save_foresight(
+        self,
+        user_id: str,
+        pattern: Mapping[str, Any],
+        *,
+        last_completed_at: str | None = None,
+    ) -> dict[str, Any]:
+        """Record an inferred timing pattern so EverOS holds it as `foresight` memory.
+
+        The pattern itself is inferred deterministically from the participant's own
+        observed task starts. Writing it back gives EverOS the timing context the
+        product relies on for unprompted nudges, and keeps the caregiver-readable
+        record in the same place as the routine it belongs to.
+        """
+
+        task_name = str(pattern.get("task_name") or "browser task")
+        recurrence = str(pattern.get("recurrence") or "weekly")
+        typical_time = str(pattern.get("typical_local_time") or "")
+        occurrences = pattern.get("occurrence_count")
+        next_due = str(pattern.get("next_due_at") or "")
+        foresight_session_id = f"foresight-{_task_slug(task_name)}"
+        statement = (
+            f"{task_name} usually happens {recurrence}"
+            + (f" around {typical_time} local time" if typical_time else "")
+            + (f", based on {occurrences} observed starts" if occurrences else "")
+            + (f". The next one is expected by {next_due}" if next_due else "")
+            + (f". It was last completed at {last_completed_at}" if last_completed_at else "")
+            + "."
+        )
+        messages = (
+            {
+                "role": "user",
+                "content": f"When do I usually do {task_name}?",
+            },
+            {
+                "role": "assistant",
+                "content": (
+                    "WebAccessible observed this recurring timing for the participant's own "
+                    f"task, inferred deterministically and never guessed: {statement}"
+                ),
+            },
+        )
+        added = await self._provider.add(
+            foresight_session_id,
+            user_id,
+            messages,
+            mode="chat",
+            async_mode=False,
+        )
+        flushed = await self._provider.flush(foresight_session_id)
+        return {
+            "session_id": foresight_session_id,
+            "statement": statement,
+            "add": _operation_receipt(added.data, include_message_count=True),
+            "flush": _operation_receipt(flushed.data),
+        }
+
+    async def list_foresight(self, user_id: str) -> list[dict[str, Any]]:
+        """Read stored timing nudges from user-owned EverOS `foresight` memory."""
+
+        result = await self._provider.get_user_memory(
+            user_id,
+            "foresight",
+            page=1,
+            page_size=50,
+        )
+        return _items(result.data, "foresights") or _items(result.data, "foresight")
+
     async def search_routines(self, user_id: str, query: str) -> list[RoutineSummary]:
         result = await self._provider.search(user_id, query, top_k=20)
         return _routine_summaries(_items(result.agent_memory, "agent_skills"))
+
+    async def resolve_aliases(self, user_id: str, query: str) -> list[str]:
+        """Expand a spoken phrase using user-owned `atomic_fact` vocabulary memory.
+
+        The spec treats vocabulary aliasing ("the light bill" for the electric bill) as the
+        unlock for routine resolution, so the user-owned scope of the same hybrid search is
+        mined for alias text instead of being discarded.
+        """
+
+        result = await self._provider.search(user_id, query, top_k=20)
+        facts = _items(result.user_memory, "atomic_facts") or _items(
+            result.user_memory, "atomic_fact"
+        )
+        aliases: list[str] = []
+        for fact in facts:
+            for key in ("fact", "content", "text", "value", "summary"):
+                value = fact.get(key)
+                if isinstance(value, str) and value.strip():
+                    aliases.append(value.strip())
+                    break
+        return list(_unique(aliases))
+
+    async def recall_context(self, user_id: str, query: str) -> dict[str, list[dict[str, Any]]]:
+        """Return every memory scope relevant to a spoken recall question in one search.
+
+        `search` already queries the user-owned and agent-owned scopes concurrently, so
+        this adds no extra round trip over `answer_episode` while returning the episode,
+        vocabulary, and routine context a grounded answer needs.
+        """
+
+        result = await self._provider.search(user_id, query, top_k=10)
+        return {
+            "episodes": _items(result.user_memory, "episodes"),
+            "atomic_facts": (
+                _items(result.user_memory, "atomic_facts")
+                or _items(result.user_memory, "atomic_fact")
+            ),
+            "foresights": (
+                _items(result.user_memory, "foresights") or _items(result.user_memory, "foresight")
+            ),
+            "agent_skills": _items(result.agent_memory, "agent_skills"),
+        }
 
     async def get_skill(self, user_id: str, skill_id: str) -> SkillDocument:
         skill_id = _require_identifier("skill_id", skill_id)
@@ -934,6 +1085,14 @@ class EverOSAdapter:
             occurred_at=occurred_at,
             provider_episode_id=str(item.get("id")) if item.get("id") else None,
         )
+
+
+def _task_slug(task_name: str) -> str:
+    normalized = "-".join(task_name.casefold().split())
+    allowed = "".join(
+        character for character in normalized if character.isalnum() or character == "-"
+    )
+    return allowed[:48] or "task"
 
 
 def _normalize_setup_profile(data: Mapping[str, Any]) -> dict[str, str | bool | None]:

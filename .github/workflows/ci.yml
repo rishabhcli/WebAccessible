@@ -54,6 +54,9 @@ jobs:
       - name: Check Python types
         run: uv run mypy backend
 
+      - name: Run Python tests
+        run: uv run pytest
+
       - name: Check TypeScript types
         run: pnpm typecheck
 

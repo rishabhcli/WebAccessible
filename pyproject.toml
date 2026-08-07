@@ -24,6 +24,7 @@ dependencies = [
 [dependency-groups]
 dev = [
   "mypy>=1.17,<2",
+  "pytest>=9,<10",
   "ruff>=0.12,<1",
   "types-pyyaml>=6.0.12.20260724",
 ]
@@ -38,6 +39,9 @@ packages = ["backend"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# `snow streamlit deploy` regenerates this directory as a verbatim copy of
+# snowflake/streamlit, so linting it only reports every finding twice.
+extend-exclude = ["snowflake/output"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

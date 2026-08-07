@@ -370,6 +370,7 @@ class SafetyPresentation(StrictModel):
     message: str = Field(min_length=1, max_length=320)
     irreversible_action: str | None = Field(default=None, max_length=160)
     amount: Amount | None = None
+    scam_category: str | None = Field(default=None, max_length=64)
 
 
 class TargetCommand(StrictModel):
@@ -494,6 +495,7 @@ class ProactiveReminder(StrictModel):
     reason: str = Field(min_length=1, max_length=240)
     due_at: datetime
     pattern: RoutinePattern
+    overdue_days: int = Field(default=0, ge=0)
     permission_required: Literal[True] = True
     can_start_guidance: bool = True
 
@@ -541,6 +543,10 @@ class EpisodeAnswer(StrictModel):
     amount: Decimal | None = None
     currency: str | None = None
     provider_episode_id: str | None = None
+    task_name: str | None = None
+    next_expected_at: datetime | None = None
+    recurrence: str | None = None
+    source: Literal["everos", "local", "everos_and_local"] | None = None
 
 
 class EscalationStatus(StrEnum):

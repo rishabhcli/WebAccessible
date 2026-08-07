@@ -8,7 +8,6 @@ import pandas as pd
 import streamlit as st
 from snowflake.snowpark.context import get_active_session
 
-
 APP_SCHEMA = '"WEBACCESSIBLE"."APP"'
 
 
@@ -287,7 +286,8 @@ except Exception:
 if runs.empty:
     st.subheader("No verified data")
     st.write(
-        "Completed live sessions appear after Browserbase, EverOS, and Snowflake evidence is synchronized."
+        "Completed live sessions appear after Browserbase, EverOS, and Snowflake "
+        "evidence is synchronized."
     )
     st.stop()
 
@@ -415,7 +415,10 @@ with overview_tab:
                 "RUN_KIND": "Kind",
                 "ACTUAL_COST_USD": st.column_config.NumberColumn("Actual USD", format="$%.4f"),
                 "COLD_BASELINE_USD": st.column_config.NumberColumn("Cold baseline", format="$%.4f"),
-                "COST_REDUCTION_PERCENT": st.column_config.NumberColumn("Reduction", format="%.1f%%"),
+                "COST_REDUCTION_PERCENT": st.column_config.NumberColumn(
+                    "Reduction",
+                    format="%.1f%%",
+                ),
                 "MODEL_CALL_COUNT": "Calls",
                 "ACTUAL_MODEL_TOKENS": "Tokens",
             },
@@ -572,8 +575,14 @@ with memory_tab:
                 "PROVIDER_STATUS": "Provider",
                 "INDEXING_STATUS": "Indexing",
                 "IS_CURRENT": "Current",
-                "WRITTEN_AT": st.column_config.DatetimeColumn("Written", format="MMM D, YYYY h:mm a"),
-                "RETRIEVED_AT": st.column_config.DatetimeColumn("Retrieved", format="MMM D, YYYY h:mm a"),
+                "WRITTEN_AT": st.column_config.DatetimeColumn(
+                    "Written",
+                    format="MMM D, YYYY h:mm a",
+                ),
+                "RETRIEVED_AT": st.column_config.DatetimeColumn(
+                    "Retrieved",
+                    format="MMM D, YYYY h:mm a",
+                ),
                 "SOURCE_STEP_ID": "Source step",
             },
         )
@@ -588,15 +597,24 @@ with memory_tab:
             width="stretch",
             hide_index=True,
             column_config={
-                "CREATED_AT": st.column_config.DatetimeColumn("Created", format="MMM D, YYYY h:mm a"),
+                "CREATED_AT": st.column_config.DatetimeColumn(
+                    "Created",
+                    format="MMM D, YYYY h:mm a",
+                ),
                 "REASON": "Reason",
                 "STATUS": "Status",
                 "DELIVERY_CHANNEL": "Channel",
                 "DELIVERY_ATTEMPT_COUNT": "Attempts",
-                "DELIVERY_ATTEMPTED_AT": st.column_config.DatetimeColumn("Attempted", format="h:mm a"),
+                "DELIVERY_ATTEMPTED_AT": st.column_config.DatetimeColumn(
+                    "Attempted",
+                    format="h:mm a",
+                ),
                 "DELIVERY_RECEIPT_AT": st.column_config.DatetimeColumn("Receipt", format="h:mm a"),
                 "CAREGIVER_RESPONSE_STATUS": "Response",
-                "CAREGIVER_RESPONSE_AT": st.column_config.DatetimeColumn("Responded", format="h:mm a"),
+                "CAREGIVER_RESPONSE_AT": st.column_config.DatetimeColumn(
+                    "Responded",
+                    format="h:mm a",
+                ),
                 "ESCALATION_ID": "Escalation ID",
             },
         )
@@ -647,9 +665,18 @@ with provider_tab:
                 "TELEMETRY_STATUS": "Telemetry",
                 "EVEROS_PROVIDER_STATUS": "EverOS",
                 "EVEROS_INDEXING_STATUS": "Indexing",
-                "CDP_ATTACHED_AT": st.column_config.DatetimeColumn("CDP attached", format="h:mm:ss a"),
-                "LIVE_VIEW_READY_AT": st.column_config.DatetimeColumn("Live View ready", format="h:mm:ss a"),
-                "FIRST_TRUSTED_USER_ACTION_AT": st.column_config.DatetimeColumn("First user action", format="h:mm:ss a"),
+                "CDP_ATTACHED_AT": st.column_config.DatetimeColumn(
+                    "CDP attached",
+                    format="h:mm:ss a",
+                ),
+                "LIVE_VIEW_READY_AT": st.column_config.DatetimeColumn(
+                    "Live View ready",
+                    format="h:mm:ss a",
+                ),
+                "FIRST_TRUSTED_USER_ACTION_AT": st.column_config.DatetimeColumn(
+                    "First user action",
+                    format="h:mm:ss a",
+                ),
                 "TERMINATED_AT": st.column_config.DatetimeColumn("Terminated", format="h:mm:ss a"),
                 "AGENT_SURFACE_USED": "Agent used",
                 "STEP_ROW_COUNT": "Step rows",

@@ -269,6 +269,7 @@ function normalizeReminder(value: unknown): ProactiveReminder | undefined {
     recurrence,
     typicalLocalTime,
     occurrenceCount,
+    overdueDays: numberValue(value, "overdue_days") ?? 0,
     permissionRequired: true,
   };
 }
@@ -687,13 +688,56 @@ class WebAccessibleApi {
     onSnapshot: (snapshot: SessionSnapshot) => void,
     onCaregiverNote?: (note: CaregiverPanelNote) => void,
   ): Promise<void> {
-    const response = await fetch(requestUrl(`/v1/sessions/${encodeURIComponent(sessionId)}${STREAM_PATH}`), {
+    await this.consumeStream(
+      `/v1/sessions/${encodeURIComponent(sessionId)}${STREAM_PATH}`,
+      signal,
+      (parsed) => {
+        const eventType = isRecord(parsed) ? stringValue(parsed, "type") : undefined;
+        if (eventType === "caregiver_note" && isRecord(parsed)) {
+          const authorName = stringValue(parsed, "author_name");
+          const noteText = stringValue(parsed, "text");
+          if (authorName && noteText) onCaregiverNote?.({ authorName, text: noteText });
+        } else if (eventType === "keepalive") {
+          // Keep the stream open without replacing the current session snapshot.
+        } else if (isRecord(parsed) && isRecord(parsed.session)) {
+          onSnapshot(normalizeSession(parsed.session, parsed.command));
+        } else if (isRecord(parsed) && stringValue(parsed, "id", "session_id")) {
+          onSnapshot(normalizeSession(parsed));
+        }
+      },
+    );
+  }
+
+  /**
+   * Subscribe to participant-scoped notices for the whole visit.
+   *
+   * Proactive reminders have to arrive before any task session exists, so they come from
+   * this stream rather than the session stream.
+   */
+  async streamParticipant(
+    signal: AbortSignal,
+    onReminder: (reminder: ProactiveReminder) => void,
+  ): Promise<void> {
+    await this.consumeStream("/v1/stream", signal, (parsed) => {
+      if (!isRecord(parsed)) return;
+      if (stringValue(parsed, "type") !== "proactive_reminder") return;
+      const reminder = isRecord(parsed.reminder) ? normalizeReminder(parsed.reminder) : undefined;
+      if (reminder) onReminder(reminder);
+    });
+  }
+
+  private async consumeStream(
+    path: string,
+    signal: AbortSignal,
+    onEvent: (parsed: unknown) => void,
+  ): Promise<void> {
+    const response = await fetch(requestUrl(path), {
       headers: this.headers({ Accept: "text/event-stream" }),
       credentials: "omit",
       signal,
     });
     if (!response.ok || !response.body || !response.headers.get("content-type")?.includes("text/event-stream")) {
-      throw new ApiError("Session streaming is unavailable.", response.status || 503, "stream_unavailable");
+      throw new ApiError("Live updates are unavailable.", response.status || 503, "stream_unavailable");
     }
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -711,21 +755,7 @@ class WebAccessibleApi {
           .filter((line) => line.startsWith("data:"))
           .map((line) => line.slice(5).trimStart())
           .join("\n");
-        if (data) {
-          const parsed = JSON.parse(data) as unknown;
-          const eventType = isRecord(parsed) ? stringValue(parsed, "type") : undefined;
-          if (eventType === "caregiver_note" && isRecord(parsed)) {
-            const authorName = stringValue(parsed, "author_name");
-            const noteText = stringValue(parsed, "text");
-            if (authorName && noteText) onCaregiverNote?.({ authorName, text: noteText });
-          } else if (eventType === "keepalive") {
-            // Keep the stream open without replacing the current session snapshot.
-          } else if (isRecord(parsed) && isRecord(parsed.session)) {
-            onSnapshot(normalizeSession(parsed.session, parsed.command));
-          } else if (isRecord(parsed) && stringValue(parsed, "id", "session_id")) {
-            onSnapshot(normalizeSession(parsed));
-          }
-        }
+        if (data) onEvent(JSON.parse(data) as unknown);
         boundary = buffer.indexOf("\n\n");
       }
     }
