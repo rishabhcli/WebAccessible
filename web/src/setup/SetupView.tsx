@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { ArrowRight, Check, Eye, EyeOff, ShieldCheck, Smartphone, Type, Volume2 } from "lucide-react";
+import { ArrowRight, BellRing, Brain, Check, Eye, EyeOff, ShieldCheck, Smartphone, Type, Volume2 } from "lucide-react";
 import { api } from "../api/client";
 import type { ParticipantContext, ReadingSize } from "../api/types";
 
@@ -14,6 +14,8 @@ export function SetupView({ onComplete, onCaregiver }: SetupViewProps) {
   const [caregiverMobile, setCaregiverMobile] = useState("");
   const [readingSize, setReadingSize] = useState<ReadingSize>("large");
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [activityMemoryEnabled, setActivityMemoryEnabled] = useState(false);
+  const [proactiveRemindersEnabled, setProactiveRemindersEnabled] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -31,6 +33,8 @@ export function SetupView({ onComplete, onCaregiver }: SetupViewProps) {
         preferences: {
           reading_size: readingSize,
           voice_enabled: voiceEnabled,
+          activity_memory_enabled: activityMemoryEnabled,
+          proactive_reminders_enabled: proactiveRemindersEnabled,
         },
       });
       onComplete(context);
@@ -107,6 +111,38 @@ export function SetupView({ onComplete, onCaregiver }: SetupViewProps) {
             <small>Voice can be changed during a task.</small>
           </span>
           <input checked={voiceEnabled} onChange={(event) => setVoiceEnabled(event.target.checked)} type="checkbox" />
+          <span aria-hidden="true" className="switch"><span /></span>
+        </label>
+
+        <label className="toggle-row">
+          <span className="toggle-row__icon"><Brain aria-hidden="true" size={21} /></span>
+          <span className="toggle-row__copy">
+            <strong>Remember my activity</strong>
+            <small>Save sanitized task, site, outcome, and timing context; never passwords or form values.</small>
+          </span>
+          <input
+            checked={activityMemoryEnabled}
+            onChange={(event) => {
+              setActivityMemoryEnabled(event.target.checked);
+              if (!event.target.checked) setProactiveRemindersEnabled(false);
+            }}
+            type="checkbox"
+          />
+          <span aria-hidden="true" className="switch"><span /></span>
+        </label>
+
+        <label className="toggle-row">
+          <span className="toggle-row__icon"><BellRing aria-hidden="true" size={21} /></span>
+          <span className="toggle-row__copy">
+            <strong>Suggest routines at my usual times</strong>
+            <small>Suggestions appear in this app and only start after you choose Start.</small>
+          </span>
+          <input
+            checked={proactiveRemindersEnabled}
+            disabled={!activityMemoryEnabled}
+            onChange={(event) => setProactiveRemindersEnabled(event.target.checked)}
+            type="checkbox"
+          />
           <span aria-hidden="true" className="switch"><span /></span>
         </label>
 

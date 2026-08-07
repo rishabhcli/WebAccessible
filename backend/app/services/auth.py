@@ -50,6 +50,8 @@ class ParticipantAuthService:
                 "voice_enabled": request.voice_enabled,
                 "caregiver_mobile": request.caregiver_mobile,
                 "timezone": request.timezone,
+                "activity_memory_enabled": request.activity_memory_enabled,
+                "proactive_reminders_enabled": request.proactive_reminders_enabled,
             },
             expires_at=expires_at,
         )

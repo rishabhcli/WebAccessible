@@ -42,6 +42,7 @@ from backend.app.domain.safety import SafetyPolicy
 from backend.app.domain.sessions import ensure_transition
 from backend.app.domain.skills import parse_skill_markdown, provider_value
 from backend.app.persistence.repository import OperationalRepository
+from backend.app.services.activity_memory import ActivityMemoryService
 from backend.app.services.completion import CompletionService
 from backend.app.services.event_hub import SessionEventHub
 from backend.app.services.guidance import GuidanceResult, GuidanceService
@@ -91,6 +92,7 @@ class SessionOrchestrator:
         self.replay = ReplayEngine()
         self.repair = RepairService()
         self.safety_policy = SafetyPolicy()
+        self.activity_memory = ActivityMemoryService(repository, everos)
         self._locks: dict[UUID, asyncio.Lock] = {}
         self._active: dict[UUID, ActiveStep] = {}
         self._skills: dict[UUID, SkillDocument] = {}
@@ -125,6 +127,7 @@ class SessionOrchestrator:
             updated_at=now,
         )
         self.repository.create_session(session)
+        self.activity_memory.record_session_start(session)
         self.repository.enqueue(
             "session_run",
             f"{session.id}:started",
@@ -257,6 +260,7 @@ class SessionOrchestrator:
                 raise PermissionError("event is not bound to this participant browser session")
             if not self.repository.append_event(event):
                 return False
+            self.activity_memory.record_event(session, event)
             self._enqueue_step_telemetry(session, event)
             if event.event_type == EventType.USER_ACTION_OBSERVED:
                 self._enqueue_trusted_browser_action(session, event)
@@ -471,6 +475,8 @@ class SessionOrchestrator:
                 terminal_message="This task was stopped before completion.",
             )
             self._finish_run(updated, "abandoned")
+            self.activity_memory.record_outcome(updated, "abandoned")
+            await self.activity_memory.sync_session_summary(updated)
             await self._publish(updated)
         await self.stop_browser(session_id, reason)
         return self._require_session(session_id)
@@ -828,6 +834,8 @@ class SessionOrchestrator:
                     ),
                 )
         self._finish_run(updated, "completed", provider_receipt=provider_receipt)
+        self.activity_memory.record_outcome(updated, "completed")
+        await self.activity_memory.sync_session_summary(updated)
         command = BackendCommand(
             session_id=session.id,
             server_state_version=updated.state_version,
@@ -863,6 +871,8 @@ class SessionOrchestrator:
         )
         self._active.pop(session.id, None)
         self._finish_run(updated, outcome.value)
+        self.activity_memory.record_outcome(updated, outcome.value)
+        await self.activity_memory.sync_session_summary(updated)
         command = BackendCommand(
             session_id=session.id,
             server_state_version=updated.state_version,
@@ -902,6 +912,8 @@ class SessionOrchestrator:
             },
         )
         self._finish_run(updated, "escalated")
+        self.activity_memory.record_outcome(updated, "escalated")
+        await self.activity_memory.sync_session_summary(updated)
         command = BackendCommand(
             session_id=session.id,
             server_state_version=updated.state_version,

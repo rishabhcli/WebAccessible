@@ -113,23 +113,7 @@ export default function App() {
     try {
       api.setAccessToken(participant.accessToken);
       created = await api.startTask(routine.id, participant.participantSessionId, routine.replayReady ? "replay" : "cold_teach");
-      const attached = await api.attachBrowser(created.id);
-      const snapshot: SessionSnapshot = {
-        ...created,
-        ...attached,
-        id: created.id,
-        userId: attached.userId ?? created.userId ?? participant.userId,
-        participantSessionId: attached.participantSessionId ?? created.participantSessionId ?? participant.participantSessionId,
-        browserbaseSessionId: attached.browserbaseSessionId ?? created.browserbaseSessionId,
-        task: {
-          id: attached.task?.id ?? created.task?.id ?? routine.id,
-          name: attached.task?.name ?? created.task?.name ?? routine.name,
-          mode: attached.task?.mode ?? created.task?.mode ?? (routine.replayReady ? "replay" : "cold"),
-          skillId: attached.task?.skillId ?? created.task?.skillId ?? routine.skillId,
-          skillRevision: attached.task?.skillRevision ?? created.task?.skillRevision ?? routine.revision,
-        },
-      };
-      setActiveSession({ snapshot });
+      await attachCreatedSession(created, routine);
     } catch (reason) {
       if (created) {
         try {
@@ -139,6 +123,50 @@ export default function App() {
         }
       }
       setStartError(reason instanceof Error ? reason.message : "The task could not be started.");
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const attachCreatedSession = async (created: SessionSnapshot, routine?: Routine) => {
+    if (!participant) throw new Error("The participant session is unavailable.");
+    const attached = await api.attachBrowser(created.id);
+    const snapshot: SessionSnapshot = {
+        ...created,
+        ...attached,
+        id: created.id,
+        userId: attached.userId ?? created.userId ?? participant.userId,
+        participantSessionId: attached.participantSessionId ?? created.participantSessionId ?? participant.participantSessionId,
+        browserbaseSessionId: attached.browserbaseSessionId ?? created.browserbaseSessionId,
+        task: {
+          id: attached.task?.id ?? created.task?.id ?? routine?.id,
+          name: attached.task?.name ?? created.task?.name ?? routine?.name ?? "Suggested task",
+          mode: attached.task?.mode ?? created.task?.mode ?? (routine?.replayReady ? "replay" : "cold"),
+          skillId: attached.task?.skillId ?? created.task?.skillId ?? routine?.skillId,
+          skillRevision: attached.task?.skillRevision ?? created.task?.skillRevision ?? routine?.revision,
+        },
+    };
+    setActiveSession({ snapshot });
+  };
+
+  const startReminder = async (reminderId: string) => {
+    if (!participant) return;
+    setStarting(true);
+    setStartError(undefined);
+    let created: SessionSnapshot | undefined;
+    try {
+      api.setAccessToken(participant.accessToken);
+      created = await api.acceptReminder(reminderId);
+      await attachCreatedSession(created);
+    } catch (reason) {
+      if (created) {
+        try {
+          await api.stopBrowser(created.id, "start_failed");
+        } catch {
+          // Provider cleanup failure is reconciled by the backend lifecycle service.
+        }
+      }
+      setStartError(reason instanceof Error ? reason.message : "The suggested task could not be started.");
     } finally {
       setStarting(false);
     }
@@ -175,7 +203,7 @@ export default function App() {
       ) : activeSession && participant ? (
         <ParticipantSession initial={activeSession.snapshot} initialLiveViewUrl={activeSession.liveViewUrl} onExit={() => setActiveSession(undefined)} participant={participant} />
       ) : participant ? (
-        <RoutineChooser onStart={startRoutine} participant={participant} startError={startError} starting={starting} />
+        <RoutineChooser onStart={startRoutine} onStartReminder={startReminder} participant={participant} startError={startError} starting={starting} />
       ) : (
         <SetupView onCaregiver={() => navigate("caregiver")} onComplete={acceptParticipant} />
       )}

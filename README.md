@@ -78,6 +78,8 @@ memory layer.
 - Rules-based stuck detection, bounded Snowflake Cortex cold/repair guidance, verified route
   recording, selector-first replay, and single-step repair.
 - EverOS profile, routine search/read, teach `add`/`flush`, skill retrieval, and episode lookup.
+- Consent-gated activity episodes and deterministic daily/weekly/monthly routine timing context.
+- Explainable in-app routine reminders with snooze and a required **Start with guidance** permission step.
 - SQLite operational event ledger plus retrying Snowflake outbox.
 - Idempotent Snowflake `MERGE` writers, actual-usage cost calculator, effective-dated rate
   cards, reconciliation views, evidence queries, and a read-only Streamlit application.

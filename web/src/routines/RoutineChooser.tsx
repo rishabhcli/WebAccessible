@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { ArrowRight, BookOpenText, Check, CheckCircle2, CircleHelp, Clock3, Copy, RefreshCw, Search, Sparkles } from "lucide-react";
+import { ArrowRight, BellRing, BookOpenText, Check, CheckCircle2, CircleHelp, Clock3, Copy, RefreshCw, Search, Sparkles, X } from "lucide-react";
 import { api } from "../api/client";
-import type { EpisodeAnswer, ParticipantContext, Routine } from "../api/types";
+import type { EpisodeAnswer, ParticipantContext, ProactiveReminder, Routine } from "../api/types";
 import { EmptyState } from "../shared/EmptyState";
 import { SkillViewer } from "../skills/SkillViewer";
 
 interface RoutineChooserProps {
   participant: ParticipantContext;
   onStart: (routine: Routine) => Promise<void>;
+  onStartReminder: (reminderId: string) => Promise<void>;
   starting: boolean;
   startError?: string;
 }
 
-export function RoutineChooser({ participant, onStart, starting, startError }: RoutineChooserProps) {
+export function RoutineChooser({ participant, onStart, onStartReminder, starting, startError }: RoutineChooserProps) {
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -25,6 +26,8 @@ export function RoutineChooser({ participant, onStart, starting, startError }: R
   const [episodeLoading, setEpisodeLoading] = useState(false);
   const [episodeError, setEpisodeError] = useState<string>();
   const [codeCopied, setCodeCopied] = useState(false);
+  const [reminders, setReminders] = useState<ProactiveReminder[]>([]);
+  const [reminderError, setReminderError] = useState<string>();
 
   const loadRoutines = useCallback(async () => {
     setLoading(true);
@@ -41,6 +44,31 @@ export function RoutineChooser({ participant, onStart, starting, startError }: R
   useEffect(() => {
     void loadRoutines();
   }, [loadRoutines]);
+
+  const loadReminders = useCallback(async () => {
+    setReminderError(undefined);
+    try {
+      setReminders(await api.listReminders());
+    } catch (reason) {
+      setReminderError(reason instanceof Error ? reason.message : "Suggestions could not be checked.");
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadReminders();
+    const timer = window.setInterval(() => void loadReminders(), 60_000);
+    return () => window.clearInterval(timer);
+  }, [loadReminders]);
+
+  const dismissReminder = async (reminderId: string) => {
+    setReminderError(undefined);
+    try {
+      await api.dismissReminder(reminderId);
+      setReminders((current) => current.filter((item) => item.id !== reminderId));
+    } catch (reason) {
+      setReminderError(reason instanceof Error ? reason.message : "That suggestion could not be dismissed.");
+    }
+  };
 
   const filteredRoutines = useMemo(() => {
     const term = query.trim().toLocaleLowerCase();
@@ -132,6 +160,39 @@ export function RoutineChooser({ participant, onStart, starting, startError }: R
 
       {error ? <p className="form-error routine-error" role="alert">{error}</p> : null}
       {startError ? <p className="form-error routine-error" role="alert">{startError}</p> : null}
+      {reminderError ? <p className="form-error routine-error" role="alert">{reminderError}</p> : null}
+
+      {reminders.length > 0 ? (
+        <section aria-labelledby="suggestion-title" aria-live="polite" className="proactive-reminders">
+          <div className="section-heading-row">
+            <div>
+              <span className="section-kicker"><BellRing aria-hidden="true" size={19} /> From your usual routine</span>
+              <h2 id="suggestion-title">Would you like to do this now?</h2>
+            </div>
+          </div>
+          <div className="proactive-reminder-list">
+            {reminders.map((reminder) => (
+              <article className="proactive-reminder" key={reminder.id}>
+                <BellRing aria-hidden="true" size={26} />
+                <div>
+                  <h3>{reminder.routine.name}</h3>
+                  <p>{reminder.reason}</p>
+                  <small>Based on {reminder.occurrenceCount} starts. Nothing opens until you choose Start with guidance.</small>
+                </div>
+                <div className="proactive-reminder__actions">
+                  <button className="button button--primary" disabled={starting} onClick={() => void onStartReminder(reminder.id)} type="button">
+                    {starting ? "Starting" : "Start with guidance"}
+                    <ArrowRight aria-hidden="true" size={20} />
+                  </button>
+                  <button aria-label={`Dismiss ${reminder.routine.name} until tomorrow`} className="icon-button" onClick={() => void dismissReminder(reminder.id)} title="Not now" type="button">
+                    <X aria-hidden="true" size={21} />
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="routine-section" aria-labelledby="routine-list-title">
         <div className="section-heading-row">

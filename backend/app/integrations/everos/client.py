@@ -26,8 +26,18 @@ _SETUP_PROFILE_CATEGORIES: Final = {
     "voice_enabled": "webaccessible.voice_enabled",
     "timezone": "webaccessible.timezone",
     "caregiver_mobile": "webaccessible.caregiver_mobile",
+    "activity_memory_enabled": "webaccessible.activity_memory_enabled",
+    "proactive_reminders_enabled": "webaccessible.proactive_reminders_enabled",
 }
-_PROFILE_PREFERENCE_FIELDS: Final = frozenset({"reading_size", "voice_enabled", "timezone"})
+_PROFILE_PREFERENCE_FIELDS: Final = frozenset(
+    {
+        "reading_size",
+        "voice_enabled",
+        "timezone",
+        "activity_memory_enabled",
+        "proactive_reminders_enabled",
+    }
+)
 _MEMORY_RETRIEVAL_DELAYS_SECONDS: Final = (0.0, 1.0, 2.0, 4.0, 8.0)
 _PRIVATE_VALUE_REMOVED: Final = object()
 
@@ -474,6 +484,60 @@ class EverOSAdapter:
         )
         return _routine_summaries(_items(result.data, "agent_skills"))
 
+    async def save_activity_memory(
+        self,
+        user_id: str,
+        session_id: str,
+        summary: Mapping[str, Any],
+        pattern: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Persist a sanitized browsing episode and optional deterministic foresight context."""
+
+        activity_session_id = f"activity-{session_id}"
+        task_name = str(summary.get("task_name") or "browser task")
+        outcome = str(summary.get("outcome") or "incomplete")
+        origins = [str(value) for value in summary.get("origins", []) if value]
+        counts = summary.get("activity_counts")
+        safe_counts = dict(counts) if isinstance(counts, Mapping) else {}
+        understanding = {
+            "task_name": task_name,
+            "outcome": outcome,
+            "started_at": summary.get("started_at"),
+            "ended_at": summary.get("ended_at"),
+            "timezone": summary.get("timezone"),
+            "visited_origins": origins,
+            "observed_activity_counts": safe_counts,
+            "all_target_page_actions_were_user_performed": True,
+        }
+        if pattern is not None:
+            understanding["learned_routine_pattern"] = dict(pattern)
+        messages = (
+            {
+                "role": "user",
+                "content": f"Remember what happened while I worked on {task_name}.",
+            },
+            {
+                "role": "assistant",
+                "content": (
+                    "Sanitized WebAccessible activity episode and timing context:\n"
+                    f"{json.dumps(understanding, separators=(',', ':'), sort_keys=True)}"
+                ),
+            },
+        )
+        added = await self._provider.add(
+            activity_session_id,
+            user_id,
+            messages,
+            mode="chat",
+            async_mode=False,
+        )
+        flushed = await self._provider.flush(activity_session_id)
+        return {
+            "session_id": activity_session_id,
+            "add": _operation_receipt(added.data, include_message_count=True),
+            "flush": _operation_receipt(flushed.data),
+        }
+
     async def search_routines(self, user_id: str, query: str) -> list[RoutineSummary]:
         result = await self._provider.search(user_id, query, top_k=20)
         return _routine_summaries(_items(result.agent_memory, "agent_skills"))
@@ -698,9 +762,13 @@ def _normalize_setup_profile(data: Mapping[str, Any]) -> dict[str, str | bool | 
 
     normalized: dict[str, str | bool | None] = {}
     for field, value in supplied.items():
-        if field == "voice_enabled":
+        if field in {
+            "voice_enabled",
+            "activity_memory_enabled",
+            "proactive_reminders_enabled",
+        }:
             if not isinstance(value, bool):
-                raise ValueError("voice_enabled must be a boolean")
+                raise ValueError(f"{field} must be a boolean")
             normalized[field] = value
             continue
         if field == "caregiver_mobile" and value is None:

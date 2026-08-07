@@ -9,6 +9,8 @@
 | Trusted action and verification facts | Browserbase Live View | Advance or record one route step | Operational event ledger, Snowflake, EverOS trajectory | No form values, cookies, query strings, or raw DOM |
 | Canonical route | Verified teach run | Deterministic warm replay | EverOS `agent_skill` | Versioned and caregiver-readable; deleted through memory workflow |
 | Completion statement | Verified terminal predicate | Answer completion questions | EverOS `episode` | Never written for an unverified outcome |
+| Sanitized activity observation | Accepted managed-session event | Explain what happened and learn usual task timing | Operational event/index cache; summarized EverOS episode/foresight | Only with activity-memory permission; origin only, no path/query/content; caregiver-readable deletion workflow |
+| Routine timing pattern and reminder action | Consented task starts; accept/dismiss | Offer an in-app routine near the usual time and enforce snooze/permission | Operational derived cache; pattern summary in EverOS | Recomputed from consented observations; never authorizes clicks, typing, or submit |
 | Model token usage and cost | Snowflake Cortex response | Prove cold/warm economics | Snowflake product tables | Effective rate-card lineage retained with the call |
 
 Passwords, card/CVV data, SSNs, bank-account values, cookies, authentication tokens, full query strings, raw DOM, and input values are excluded at capture time.
