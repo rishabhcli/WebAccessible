@@ -128,6 +128,35 @@ class OperationalRepository:
           dismissed_at TEXT NOT NULL,
           PRIMARY KEY(user_id, page_key)
         );
+        CREATE TABLE IF NOT EXISTS activity_observations (
+          activity_id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          session_id TEXT NOT NULL,
+          task_id TEXT NOT NULL,
+          task_name TEXT NOT NULL,
+          activity_type TEXT NOT NULL,
+          origin TEXT,
+          outcome TEXT,
+          occurred_at TEXT NOT NULL,
+          timezone TEXT NOT NULL,
+          local_weekday INTEGER NOT NULL,
+          local_minute INTEGER NOT NULL,
+          details_json TEXT NOT NULL DEFAULT '{}',
+          memory_sync_state TEXT NOT NULL DEFAULT 'pending'
+        );
+        CREATE INDEX IF NOT EXISTS idx_activity_user_task_time
+          ON activity_observations(user_id, task_id, activity_type, occurred_at);
+        CREATE INDEX IF NOT EXISTS idx_activity_session_time
+          ON activity_observations(session_id, occurred_at);
+        CREATE TABLE IF NOT EXISTS reminder_actions (
+          reminder_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          task_id TEXT NOT NULL,
+          status TEXT NOT NULL,
+          acted_at TEXT NOT NULL,
+          snoozed_until TEXT,
+          PRIMARY KEY(reminder_id, user_id)
+        );
         """
         with self._lock, self._connection:
             self._connection.executescript(schema)
@@ -179,6 +208,165 @@ class OperationalRepository:
         result = dict(row)
         result["preferences"] = json.loads(result.pop("preferences_json"))
         return result
+
+    def record_activity(
+        self,
+        *,
+        activity_id: str,
+        user_id: str,
+        session_id: UUID | str,
+        task_id: str,
+        task_name: str,
+        activity_type: str,
+        occurred_at: datetime,
+        timezone: str,
+        local_weekday: int,
+        local_minute: int,
+        origin: str | None = None,
+        outcome: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> bool:
+        with self._lock, self._connection:
+            cursor = self._connection.execute(
+                """
+                INSERT OR IGNORE INTO activity_observations
+                  (activity_id, user_id, session_id, task_id, task_name, activity_type,
+                   origin, outcome, occurred_at, timezone, local_weekday, local_minute,
+                   details_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    activity_id,
+                    user_id,
+                    str(session_id),
+                    task_id,
+                    task_name,
+                    activity_type,
+                    origin,
+                    outcome,
+                    occurred_at.isoformat(),
+                    timezone,
+                    local_weekday,
+                    local_minute,
+                    json.dumps(details or {}, separators=(",", ":"), sort_keys=True),
+                ),
+            )
+        return cursor.rowcount == 1
+
+    def list_activities(
+        self,
+        user_id: str,
+        *,
+        activity_type: str | None = None,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        where = "WHERE user_id = ?"
+        parameters: list[Any] = [user_id]
+        if activity_type is not None:
+            where += " AND activity_type = ?"
+            parameters.append(activity_type)
+        parameters.append(limit)
+        with self._lock:
+            rows = self._connection.execute(
+                f"""
+                SELECT * FROM activity_observations {where}
+                ORDER BY occurred_at DESC LIMIT ?
+                """,
+                parameters,
+            ).fetchall()
+        rows = list(reversed(rows))
+        activities: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            item["details"] = json.loads(item.pop("details_json"))
+            activities.append(item)
+        return activities
+
+    def summarize_session_activity(self, session_id: UUID | str) -> dict[str, Any] | None:
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM activity_observations
+                WHERE session_id = ? ORDER BY occurred_at ASC
+                """,
+                (str(session_id),),
+            ).fetchall()
+        if not rows:
+            return None
+        items = [dict(row) for row in rows]
+        counts: dict[str, int] = {}
+        origins: list[str] = []
+        outcome: str | None = None
+        for item in items:
+            activity_type = str(item["activity_type"])
+            counts[activity_type] = counts.get(activity_type, 0) + 1
+            if item.get("origin") and item["origin"] not in origins:
+                origins.append(str(item["origin"]))
+            if item.get("outcome"):
+                outcome = str(item["outcome"])
+        first = items[0]
+        return {
+            "session_id": str(session_id),
+            "user_id": first["user_id"],
+            "task_id": first["task_id"],
+            "task_name": first["task_name"],
+            "started_at": first["occurred_at"],
+            "ended_at": items[-1]["occurred_at"],
+            "timezone": first["timezone"],
+            "origins": origins,
+            "activity_counts": counts,
+            "outcome": outcome or "incomplete",
+        }
+
+    def mark_session_activity_synced(self, session_id: UUID | str, *, synced: bool) -> None:
+        with self._lock, self._connection:
+            self._connection.execute(
+                """
+                UPDATE activity_observations SET memory_sync_state = ? WHERE session_id = ?
+                """,
+                ("synced" if synced else "failed", str(session_id)),
+            )
+
+    def record_reminder_action(
+        self,
+        *,
+        reminder_id: str,
+        user_id: str,
+        task_id: str,
+        status: str,
+        acted_at: datetime,
+        snoozed_until: datetime | None = None,
+    ) -> None:
+        with self._lock, self._connection:
+            self._connection.execute(
+                """
+                INSERT INTO reminder_actions
+                  (reminder_id, user_id, task_id, status, acted_at, snoozed_until)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(reminder_id, user_id) DO UPDATE SET
+                  status = excluded.status,
+                  acted_at = excluded.acted_at,
+                  snoozed_until = excluded.snoozed_until
+                """,
+                (
+                    reminder_id,
+                    user_id,
+                    task_id,
+                    status,
+                    acted_at.isoformat(),
+                    snoozed_until.isoformat() if snoozed_until else None,
+                ),
+            )
+
+    def get_reminder_action(self, reminder_id: str, user_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT * FROM reminder_actions WHERE reminder_id = ? AND user_id = ?
+                """,
+                (reminder_id, user_id),
+            ).fetchone()
+        return dict(row) if row else None
 
     def create_session(self, session: SessionView) -> SessionView:
         payload = session.model_dump(mode="json")

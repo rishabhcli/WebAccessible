@@ -871,6 +871,46 @@ textarea:focus {
   margin-top: 14px;
 }
 
+.proactive-reminders {
+  margin-top: 34px;
+  padding: 28px;
+  background: #f2f8f4;
+  border: 2px solid #8cb39a;
+  border-radius: 8px;
+}
+
+.proactive-reminder-list {
+  display: grid;
+  margin-top: 18px;
+  gap: 12px;
+}
+
+.proactive-reminder {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  padding: 18px;
+  gap: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.proactive-reminder h3,
+.proactive-reminder p {
+  margin: 0 0 5px;
+}
+
+.proactive-reminder small {
+  color: var(--muted);
+}
+
+.proactive-reminder__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .routine-section {
   padding: 50px 0 42px;
 }
@@ -2066,6 +2106,15 @@ tbody tr:last-child td {
   }
 
   .routine-card__actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+
+  .proactive-reminder {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .proactive-reminder__actions {
     grid-column: 1 / -1;
     justify-content: flex-end;
   }

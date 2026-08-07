@@ -66,7 +66,9 @@ provider readiness
 - Demo and production modes never silently fall back to fixtures, handcrafted skills, estimated provider success, or disconnected dashboard data.
 - Snowflake `ACCOUNT_USAGE` is reconciliation/backfill only, never the live cost source.
 - EverOS is the persisted skill source. A local cache may accelerate an active session but cannot become sponsor evidence.
-- Foresight may be stored, but the first release does not surface unsolicited reminders. Help remains driven by observable stuck signals or explicit user action, per `AGENTS.md`.
+- Foresight reminders are an explicit opt-in, separate from activity-memory consent. They appear only
+  in the routine chooser, explain the learned timing evidence, can be snoozed, and require a user click
+  before an allowlisted routine is opened. Stuck/help prompts remain driven by observable signals.
 
 ### 1.4 Scope tiers
 
@@ -171,7 +173,8 @@ The P0 WebAccessible session UI and FastAPI service may run locally for the stag
 - Speech input for the phrase "help" is deferred; P0 explicit help is the WebAccessible session button. Voice output remains optional P3 work.
 - Document upload is deferred until provider retention, deletion, and review semantics are confirmed.
 - Cross-user analytics are deferred until consent and sparse-cohort review.
-- Unsolicited foresight reminders are deferred because they conflict with the observable-stuck interaction rule.
+- Opt-in foresight reminders are allowed as non-blocking routine suggestions; they never enter the
+  stuck/help channel and never authorize target-page action.
 
 ## 3. Target architecture
 
@@ -559,6 +562,9 @@ Only one offer may exist at a time. Dismissal records `(user_id, page_key, dismi
 | `POST /v1/tasks/{id}:start` | Start selected cold or replay task | Yes |
 | `POST /v1/tasks/{id}:end` | Explicit cancel/abandon; cannot declare completion | Yes |
 | `GET /v1/routines` | List EverOS-backed routines | Yes |
+| `GET /v1/reminders` | List currently due, consent-gated learned-routine suggestions | P1 |
+| `POST /v1/reminders/{id}:dismiss` | Snooze one suggestion without starting browser work | P1 |
+| `POST /v1/reminders/{id}:accept` | Record permission and create the ordinary guided task session | P1 |
 | `GET /v1/skills/{id}` | Read validated current revision | Yes |
 | `PATCH /v1/skills/{id}` | Validated audited revision | P2 |
 | `DELETE /v1/skills/{id}` | Authorized deletion and cache invalidation | P2 |
@@ -575,9 +581,9 @@ Only one offer may exist at a time. Dismissal records `(user_id, page_key, dismi
 | Store | Owns | Does not own |
 |---|---|---|
 | Web session storage | Short-lived authenticated participant/UI recovery state | Provider keys/CDP URLs, skills, passwords, authoritative task state |
-| SQLite operational store | Active state, event ledger, idempotency, provider operation status, telemetry outbox | Sponsor proof or long-term caregiver memory |
+| SQLite operational store | Active state, event ledger, idempotency, derived activity/reminder index, provider operation status, telemetry outbox | Sponsor proof or long-term caregiver memory |
 | Browserbase | Active managed Chrome session, interactive Live View, provider session recording/metadata | Product safety decisions, task memory, autonomous target actions |
-| EverOS | Profile, reviewed facts, Case, Skill, Episode, optional foresight | Browser authorization, click execution, safety policy |
+| EverOS | Profile, reviewed facts, Case, Skill, consented activity Episode and foresight | Browser authorization, click execution, safety policy |
 | Snowflake | Session/step telemetry, model-call/cost ledger, escalation/reporting facts | Interactive click-loop state or raw sensitive DOM |
 
 ### 6.2 EverOS lifecycle
@@ -590,6 +596,19 @@ Only one offer may exist at a time. Dismissal records `(user_id, page_key, dismi
 4. Record returned provider IDs and indexing state.
 
 The rest of the backend addresses memory by WebAccessible `user_id`; only the EverOS adapter translates to the provider's verified user-owned versus agent-owned scopes. Cross-user negative tests must prove that changing either identifier cannot retrieve another user's facts, Cases, Skills, or Episodes.
+
+**Consented activity and foresight**
+
+1. Separate setup switches grant activity-memory and proactive-reminder permission; reminders cannot
+   be enabled without activity memory.
+2. Each accepted managed-session event is idempotently indexed using task, safe origin, kind, outcome,
+   and participant-local time. Sensitive payload values, path/query, content, and raw DOM are excluded.
+3. At a terminal outcome, a deterministic session understanding and any learned timing pattern are
+   written to EverOS. SQLite remains only the operational idempotency/derived-query cache.
+4. After two or more task starts, deterministic recurrence inference may produce daily, weekly, or
+   monthly foresight. The in-app reminder explains its evidence and respects accept/snooze state.
+5. Accept creates a normal session and may open the saved allowlisted start URL; the browser bridge's
+   no-click/no-type/no-submit boundary is unchanged.
 
 **Teach completion**
 

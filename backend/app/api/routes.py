@@ -4,7 +4,7 @@ import asyncio
 import json
 import tempfile
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, cast
 from uuid import UUID
@@ -36,9 +36,13 @@ from backend.app.contracts.models import (
     ParticipantRole,
     ParticipantSessionRequest,
     ParticipantSessionResponse,
+    ProactiveReminder,
     ProviderReadiness,
     ProviderState,
     ReadinessResponse,
+    ReminderActionResponse,
+    ReminderDismissRequest,
+    ReminderListResponse,
     ReviewedBillUploadResponse,
     RoutineSummary,
     RuntimeMode,
@@ -202,6 +206,8 @@ async def create_participant_session(
                     "voice_enabled": body.voice_enabled,
                     "timezone": body.timezone,
                     "caregiver_mobile": body.caregiver_mobile,
+                    "activity_memory_enabled": body.activity_memory_enabled,
+                    "proactive_reminders_enabled": body.proactive_reminders_enabled,
                 },
             )
         except Exception as error:
@@ -360,6 +366,97 @@ async def list_routines(
     app: Annotated[AppContainer, Depends(container)],
 ) -> list[RoutineSummary]:
     return await app.orchestrator.list_routines(who.user_id)
+
+
+@router.get("/v1/reminders", response_model=ReminderListResponse)
+async def list_reminders(
+    who: Annotated[AuthenticatedParticipant, Depends(participant)],
+    app: Annotated[AppContainer, Depends(container)],
+) -> ReminderListResponse:
+    routines = await app.orchestrator.list_routines(who.user_id)
+    memory_enabled, reminders_enabled, _ = app.orchestrator.activity_memory.consent(
+        who.participant_session_id
+    )
+    reminders = app.orchestrator.activity_memory.reminders(
+        user_id=who.user_id,
+        participant_session_id=who.participant_session_id,
+        routines=routines,
+    )
+    return ReminderListResponse(
+        reminders=reminders,
+        activity_memory_enabled=memory_enabled,
+        proactive_reminders_enabled=reminders_enabled,
+    )
+
+
+@router.post("/v1/reminders/{reminder_id}:dismiss", response_model=ReminderActionResponse)
+async def dismiss_reminder(
+    reminder_id: str,
+    body: ReminderDismissRequest,
+    who: Annotated[AuthenticatedParticipant, Depends(participant)],
+    app: Annotated[AppContainer, Depends(container)],
+) -> ReminderActionResponse:
+    reminders = await _current_reminders(who, app)
+    reminder = next((item for item in reminders if item.id == reminder_id), None)
+    if reminder is None:
+        raise HTTPException(status_code=404, detail="Reminder is no longer active")
+    now = datetime.now(UTC)
+    app.repository.record_reminder_action(
+        reminder_id=reminder.id,
+        user_id=who.user_id,
+        task_id=reminder.pattern.task_id,
+        status="dismissed",
+        acted_at=now,
+        snoozed_until=now + timedelta(minutes=body.snooze_minutes),
+    )
+    return ReminderActionResponse(reminder_id=reminder.id, status="dismissed")
+
+
+@router.post("/v1/reminders/{reminder_id}:accept", response_model=ReminderActionResponse)
+async def accept_reminder(
+    reminder_id: str,
+    who: Annotated[AuthenticatedParticipant, Depends(participant)],
+    app: Annotated[AppContainer, Depends(container)],
+) -> ReminderActionResponse:
+    reminders = await _current_reminders(who, app)
+    reminder = next((item for item in reminders if item.id == reminder_id), None)
+    if reminder is None:
+        raise HTTPException(status_code=404, detail="Reminder is no longer active")
+    routine = reminder.routine
+    mode = SessionMode.REPLAY if routine.source == "everos" else SessionMode.COLD_TEACH
+    session = app.orchestrator.create_session(
+        user_id=who.user_id,
+        participant_session_id=who.participant_session_id,
+        mode=mode,
+        task_name=routine.name,
+        task_intent=routine.name,
+        skill_id=routine.id if routine.source == "everos" else None,
+        start_url=routine.start_url,
+    )
+    app.repository.record_reminder_action(
+        reminder_id=reminder.id,
+        user_id=who.user_id,
+        task_id=reminder.pattern.task_id,
+        status="accepted",
+        acted_at=datetime.now(UTC),
+    )
+    return ReminderActionResponse(
+        reminder_id=reminder.id,
+        status="accepted",
+        session=session,
+    )
+
+
+async def _current_reminders(
+    who: AuthenticatedParticipant,
+    app: AppContainer,
+) -> list[ProactiveReminder]:
+    routines = await app.orchestrator.list_routines(who.user_id)
+    return app.orchestrator.activity_memory.reminders(
+        user_id=who.user_id,
+        participant_session_id=who.participant_session_id,
+        routines=routines,
+    )
 
 
 @router.post("/v1/tasks:resolve", response_model=TaskResolveResponse)

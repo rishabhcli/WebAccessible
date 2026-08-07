@@ -71,6 +71,14 @@ class ParticipantSessionRequest(StrictModel):
     voice_enabled: bool = False
     caregiver_mobile: str | None = Field(default=None, min_length=7, max_length=32)
     timezone: str = Field(default="America/Los_Angeles", max_length=80)
+    activity_memory_enabled: bool = False
+    proactive_reminders_enabled: bool = False
+
+    @model_validator(mode="after")
+    def reminders_require_memory_consent(self) -> ParticipantSessionRequest:
+        if self.proactive_reminders_enabled and not self.activity_memory_enabled:
+            raise ValueError("proactive reminders require activity memory permission")
+        return self
 
 
 class ParticipantSessionResponse(StrictModel):
@@ -461,6 +469,50 @@ class RoutineSummary(StrictModel):
     start_url: str
     last_completed_at: datetime | None = None
     source: Literal["everos", "starter"] = "everos"
+
+
+class RecurrenceKind(StrEnum):
+    DAILY = "daily"
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
+
+
+class RoutinePattern(StrictModel):
+    task_id: str
+    task_name: str
+    recurrence: RecurrenceKind
+    occurrence_count: int = Field(ge=2)
+    typical_local_time: str = Field(pattern=r"^\d{2}:\d{2}$")
+    timezone: str
+    next_due_at: datetime
+    confidence: float = Field(ge=0, le=1)
+
+
+class ProactiveReminder(StrictModel):
+    id: str
+    routine: RoutineSummary
+    reason: str = Field(min_length=1, max_length=240)
+    due_at: datetime
+    pattern: RoutinePattern
+    permission_required: Literal[True] = True
+    can_start_guidance: bool = True
+
+
+class ReminderListResponse(StrictModel):
+    reminders: list[ProactiveReminder]
+    activity_memory_enabled: bool
+    proactive_reminders_enabled: bool
+    generated_at: datetime = Field(default_factory=utc_now)
+
+
+class ReminderDismissRequest(StrictModel):
+    snooze_minutes: int = Field(default=1440, ge=10, le=10080)
+
+
+class ReminderActionResponse(StrictModel):
+    reminder_id: str
+    status: Literal["accepted", "dismissed"]
+    session: SessionView | None = None
 
 
 class TaskResolveRequest(StrictModel):

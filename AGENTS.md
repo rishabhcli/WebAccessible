@@ -33,7 +33,10 @@ Supporting docs:
 
 ## Interaction model
 
-- Detect “stuck” from observable interaction signals, not proactive prompts.
+- Detect “stuck” from observable interaction signals. Separately, an explicit participant opt-in
+  may enable non-blocking routine reminders learned from the participant's own task timing.
+- A proactive reminder may open an allowlisted saved routine only after the participant accepts it;
+  all in-task clicks, typing, submits, and irreversible confirmations remain user-performed.
 - Guidance content is one sentence, then next-step verification.
 - Never flood the user with repeated popups; apply cooldown on dismissed help.
 - Escalate ambiguity/money-risk situations (including repeated failures) to Susan workflow.

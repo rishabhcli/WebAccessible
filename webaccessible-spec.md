@@ -107,6 +107,22 @@ WebAccessible loads the skill and replays: navigate → highlight → verify →
 
 All three miss → fall back to reasoning → rewrite that step.
 
+### Phase 5a — Remembered timing and proactive routine reminders
+
+Activity memory and reminders are separate, explicit participant permissions. When activity memory
+is enabled, every accepted event in the managed Browserbase session is retained as sanitized context:
+task, origin (never path/query), event kind, outcome, and local time. Passwords, field values, raw DOM,
+cookies, tokens, account numbers, and page content are never included.
+
+After at least two starts of the same task, WebAccessible deterministically infers a daily, weekly, or
+monthly timing pattern. If reminder permission is also enabled, the routine chooser may surface one
+calm, dismissible suggestion near the learned time. It states why it appeared and how many observations
+support it. This is an in-app routine suggestion, not a stuck/help prompt, and it respects snooze state.
+
+Choosing **Start with guidance** is the permission boundary. It may create a task session, open the
+confirmed skill's allowlisted start URL, and begin selector-first guidance. It may not click, type,
+submit, accept a permission, or cross an irreversible boundary; Margaret still performs those actions.
+
 ---
 
 ### Phase 6 — Escalation to Susan

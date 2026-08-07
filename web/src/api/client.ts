@@ -7,6 +7,7 @@ import type {
   EpisodeAnswer,
   ParticipantContext,
   ParticipantSessionInput,
+  ProactiveReminder,
   ReadinessSnapshot,
   ReviewedBillUpload,
   Routine,
@@ -249,6 +250,29 @@ function normalizeRoutine(value: unknown): Routine | undefined {
   };
 }
 
+function normalizeReminder(value: unknown): ProactiveReminder | undefined {
+  if (!isRecord(value) || !isRecord(value.routine) || !isRecord(value.pattern)) return undefined;
+  const id = stringValue(value, "id", "reminder_id");
+  const reason = stringValue(value, "reason");
+  const dueAt = stringValue(value, "due_at");
+  const routine = normalizeRoutine(value.routine);
+  const recurrence = stringValue(value.pattern, "recurrence");
+  const typicalLocalTime = stringValue(value.pattern, "typical_local_time");
+  const occurrenceCount = numberValue(value.pattern, "occurrence_count");
+  if (!id || !reason || !dueAt || !routine || !typicalLocalTime || occurrenceCount === undefined) return undefined;
+  if (recurrence !== "daily" && recurrence !== "weekly" && recurrence !== "monthly") return undefined;
+  return {
+    id,
+    routine,
+    reason,
+    dueAt,
+    recurrence,
+    typicalLocalTime,
+    occurrenceCount,
+    permissionRequired: true,
+  };
+}
+
 function normalizeReadiness(value: unknown): ReadinessSnapshot {
   if (!isRecord(value)) throw new ApiError("The readiness response was not valid.", 502, "invalid_response");
   const rawCapabilities = value.capabilities ?? value.providers;
@@ -345,6 +369,8 @@ class WebAccessibleApi {
       voice_enabled: input.preferences?.voice_enabled ?? false,
       caregiver_mobile: input.caregiver_mobile || undefined,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      activity_memory_enabled: input.preferences?.activity_memory_enabled ?? false,
+      proactive_reminders_enabled: input.preferences?.proactive_reminders_enabled ?? false,
     };
     const value = await this.request<unknown>("/v1/participant-sessions", {
       method: "POST",
@@ -363,6 +389,8 @@ class WebAccessibleApi {
       accessToken: stringValue(value, "access_token", "token"),
       readingSize: input.preferences?.reading_size ?? "large",
       voiceEnabled: input.preferences?.voice_enabled ?? false,
+      activityMemoryEnabled: input.preferences?.activity_memory_enabled ?? false,
+      proactiveRemindersEnabled: input.preferences?.proactive_reminders_enabled ?? false,
     };
     this.setAccessToken(context.accessToken);
     return context;
@@ -373,6 +401,31 @@ class WebAccessibleApi {
     const payload = await this.request<unknown>(`/v1/routines${suffix}`);
     const items = Array.isArray(payload) ? payload : isRecord(payload) && Array.isArray(payload.routines) ? payload.routines : [];
     return items.map(normalizeRoutine).filter((item): item is Routine => Boolean(item));
+  }
+
+  async listReminders(): Promise<ProactiveReminder[]> {
+    const payload = await this.request<unknown>("/v1/reminders");
+    const items = isRecord(payload) && Array.isArray(payload.reminders) ? payload.reminders : [];
+    return items.map(normalizeReminder).filter((item): item is ProactiveReminder => Boolean(item));
+  }
+
+  async dismissReminder(reminderId: string, snoozeMinutes = 1440): Promise<void> {
+    await this.request<unknown>(`/v1/reminders/${encodeURIComponent(reminderId)}:dismiss`, {
+      method: "POST",
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: JSON.stringify({ snooze_minutes: snoozeMinutes }),
+    });
+  }
+
+  async acceptReminder(reminderId: string): Promise<SessionSnapshot> {
+    const payload = await this.request<unknown>(`/v1/reminders/${encodeURIComponent(reminderId)}:accept`, {
+      method: "POST",
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+    });
+    if (!isRecord(payload) || !payload.session) {
+      throw new ApiError("The reminder did not create a task session.", 502, "invalid_response");
+    }
+    return normalizeSession(payload.session);
   }
 
   async resolveTasks(query: string): Promise<Routine[]> {

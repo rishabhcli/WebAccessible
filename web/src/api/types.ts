@@ -12,6 +12,8 @@ export interface ParticipantSessionInput {
   preferences?: {
     reading_size: ReadingSize;
     voice_enabled: boolean;
+    activity_memory_enabled?: boolean;
+    proactive_reminders_enabled?: boolean;
   };
 }
 
@@ -23,6 +25,8 @@ export interface ParticipantContext {
   accessToken?: string;
   readingSize: ReadingSize;
   voiceEnabled: boolean;
+  activityMemoryEnabled: boolean;
+  proactiveRemindersEnabled: boolean;
 }
 
 export interface CapabilityReadiness {
@@ -53,6 +57,17 @@ export interface Routine {
   startOrigin?: string;
   lastCompletedAt?: string;
   replayReady: boolean;
+}
+
+export interface ProactiveReminder {
+  id: string;
+  routine: Routine;
+  reason: string;
+  dueAt: string;
+  recurrence: "daily" | "weekly" | "monthly";
+  typicalLocalTime: string;
+  occurrenceCount: number;
+  permissionRequired: true;
 }
 
 export interface SkillDocument {
