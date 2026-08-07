@@ -272,6 +272,8 @@ class EverOSProvider:
             profiles: list[dict[str, Any]] = []
         else:
             profiles = _items(current.data, "profiles")
+        if not profiles:
+            profiles = await self._bootstrap_profile(user_id, normalized)
         profile_id = _first_text(item.get("id") for item in profiles)
         existing = _profile_items_by_category(profiles)
         operations, updated_fields, removed_fields = _profile_edit_operations(
@@ -316,6 +318,58 @@ class EverOSProvider:
             "removed_fields": removed_fields,
             "caregiver_mobile_stored": caregiver_stored,
         }
+
+    async def _bootstrap_profile(
+        self,
+        user_id: str,
+        data: Mapping[str, str | bool | None],
+    ) -> list[dict[str, Any]]:
+        """Create the extracted profile required by EverOS before its edit API can run."""
+
+        reviewed_preferences = {
+            key: value for key, value in data.items() if key != "caregiver_mobile"
+        }
+        await self.add(
+            f"webaccessible-setup:{user_id}",
+            user_id,
+            (
+                {
+                    "role": "user",
+                    "content": (
+                        "Reviewed WebAccessible participant setup. Remember these as stable "
+                        "profile preferences: "
+                        f"{json.dumps(reviewed_preferences, separators=(',', ':'), sort_keys=True)}"
+                    ),
+                },
+            ),
+            mode="chat",
+            async_mode=False,
+        )
+        await self.flush(f"webaccessible-setup:{user_id}")
+
+        for delay_seconds in _MEMORY_RETRIEVAL_DELAYS_SECONDS:
+            if delay_seconds:
+                await asyncio.sleep(delay_seconds)
+            try:
+                current = await self.get_user_memory(
+                    user_id,
+                    "profile",
+                    page=1,
+                    page_size=20,
+                )
+            except EverOSProviderError as exc:
+                if exc.status_code == 404 or exc.retryable:
+                    continue
+                raise
+            profiles = _items(current.data, "profiles")
+            if profiles:
+                return profiles
+
+        raise EverOSProviderError(
+            EverOSErrorCode.INDEXING,
+            "EverOS accepted the setup but its participant profile is still indexing.",
+            retryable=True,
+        )
 
     async def delete_user_memory(self, user_id: str) -> EverOSResult:
         result = await self._call("delete", user_id=_require_identifier("user_id", user_id))
@@ -505,14 +559,152 @@ class EverOSAdapter:
         )
         markdown = _render_skill_markdown(skill_document)
         episode_payload = _as_plain(episode)
-        messages = (
+        timestamp_ms = int(datetime.now().timestamp() * 1000)
+        messages: list[dict[str, Any]] = [
             {
                 "role": "user",
                 "content": (
                     f"Teach the recurring task {skill_document.name}. The participant performed "
                     "every target-page action in Browserbase Live View."
                 ),
+                "timestamp": timestamp_ms,
             },
+        ]
+        for step_number, step in enumerate(skill_document.steps, start=1):
+            observe_call_id = f"observe-{step.step_id}"
+            verify_call_id = f"verify-{step.step_id}"
+            messages.extend(
+                (
+                    {
+                        "role": "assistant",
+                        "content": "Observe the sanitized page and locate the next target.",
+                        "tool_calls": [
+                            {
+                                "id": observe_call_id,
+                                "type": "function",
+                                "function": {
+                                    "name": "observe_sanitized_page",
+                                    "arguments": json.dumps(
+                                        {
+                                            "step_number": step_number,
+                                            "preconditions": _as_plain(step.preconditions),
+                                        },
+                                        separators=(",", ":"),
+                                        sort_keys=True,
+                                    ),
+                                },
+                            }
+                        ],
+                        "timestamp": timestamp_ms + len(messages),
+                    },
+                    {
+                        "role": "tool",
+                        "content": json.dumps(
+                            {
+                                "instruction": step.instruction,
+                                "selectors": _as_plain(step.selectors),
+                                "target_visible": True,
+                                "target_enabled": True,
+                            },
+                            separators=(",", ":"),
+                            sort_keys=True,
+                        ),
+                        "tool_call_id": observe_call_id,
+                        "timestamp": timestamp_ms + len(messages) + 1,
+                    },
+                    {
+                        "role": "assistant",
+                        "content": (
+                            f"Guidance shown to the participant: {step.instruction} "
+                            "The application waited for trusted participant input."
+                        ),
+                        "timestamp": timestamp_ms + len(messages) + 2,
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            "The participant performed the instructed action through Browserbase "
+                            "Live View; WebAccessible did not click or submit for them."
+                        ),
+                        "timestamp": timestamp_ms + len(messages) + 3,
+                    },
+                    {
+                        "role": "assistant",
+                        "content": "Verify the trusted action against the recorded transition.",
+                        "tool_calls": [
+                            {
+                                "id": verify_call_id,
+                                "type": "function",
+                                "function": {
+                                    "name": "verify_user_action",
+                                    "arguments": json.dumps(
+                                        {
+                                            "expected_transition": _as_plain(
+                                                step.expected_transition
+                                            ),
+                                            "step_number": step_number,
+                                        },
+                                        separators=(",", ":"),
+                                        sort_keys=True,
+                                    ),
+                                },
+                            }
+                        ],
+                        "timestamp": timestamp_ms + len(messages) + 4,
+                    },
+                    {
+                        "role": "tool",
+                        "content": json.dumps(
+                            {
+                                "trusted_user_action": True,
+                                "verification_passed": True,
+                            },
+                            separators=(",", ":"),
+                            sort_keys=True,
+                        ),
+                        "tool_call_id": verify_call_id,
+                        "timestamp": timestamp_ms + len(messages) + 5,
+                    },
+                    {
+                        "role": "assistant",
+                        "content": "Record the verified transition for deterministic replay.",
+                        "tool_calls": [
+                            {
+                                "id": f"record-{step.step_id}",
+                                "type": "function",
+                                "function": {
+                                    "name": "record_verified_replay_step",
+                                    "arguments": json.dumps(
+                                        {
+                                            "instruction": step.instruction,
+                                            "selectors": _as_plain(step.selectors),
+                                            "step_id": str(step.step_id),
+                                        },
+                                        separators=(",", ":"),
+                                        sort_keys=True,
+                                    ),
+                                },
+                            }
+                        ],
+                        "timestamp": timestamp_ms + len(messages) + 6,
+                    },
+                    {
+                        "role": "tool",
+                        "content": json.dumps(
+                            {
+                                "expected_transition": _as_plain(step.expected_transition),
+                                "recorded": True,
+                                "replay_strategy": "selector-first",
+                            },
+                            separators=(",", ":"),
+                            sort_keys=True,
+                        ),
+                        "tool_call_id": f"record-{step.step_id}",
+                        "timestamp": timestamp_ms + len(messages) + 7,
+                    },
+                )
+            )
+        messages.append(
             {
                 "role": "assistant",
                 "content": (
@@ -521,6 +713,7 @@ class EverOSAdapter:
                     "Verified terminal outcome:\n"
                     f"{json.dumps(episode_payload, separators=(',', ':'), sort_keys=True)}"
                 ),
+                "timestamp": timestamp_ms + len(messages),
             },
         )
         added = await self._provider.add(

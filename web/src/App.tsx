@@ -3,6 +3,7 @@ import { HeartHandshake, LogOut, MousePointer2, UserRound } from "lucide-react";
 import { api } from "./api/client";
 import type { ParticipantContext, ReadinessSnapshot, Routine, SessionSnapshot } from "./api/types";
 import { CaregiverView } from "./caregiver/CaregiverView";
+import { LandingPage } from "./landing/LandingPage";
 import { RoutineChooser } from "./routines/RoutineChooser";
 import { ParticipantSession } from "./session/ParticipantSession";
 import { ProviderStatus } from "./shared/ProviderStatus";
@@ -11,7 +12,7 @@ import { SetupView } from "./setup/SetupView";
 const PARTICIPANT_STORAGE_KEY = "webaccessible.participant-session";
 const CAREGIVER_STORAGE_KEY = "webaccessible.caregiver-session";
 
-type AppView = "participant" | "caregiver";
+type AppView = "landing" | "participant" | "caregiver";
 
 interface ActiveSession {
   snapshot: SessionSnapshot;
@@ -31,7 +32,9 @@ function readContext(key: string): ParticipantContext | undefined {
 }
 
 function initialView(): AppView {
-  return window.location.pathname.startsWith("/caregiver") ? "caregiver" : "participant";
+  if (window.location.pathname.startsWith("/caregiver")) return "caregiver";
+  if (window.location.pathname.startsWith("/participant")) return "participant";
+  return "landing";
 }
 
 export default function App() {
@@ -78,7 +81,7 @@ export default function App() {
 
   const navigate = (nextView: AppView) => {
     setView(nextView);
-    const path = nextView === "caregiver" ? "/caregiver" : "/";
+    const path = nextView === "caregiver" ? "/caregiver" : nextView === "participant" ? "/participant" : "/";
     window.history.pushState({}, "", path);
     window.scrollTo({ top: 0, behavior: "auto" });
   };
@@ -150,34 +153,40 @@ export default function App() {
   return (
     <div className={`app ${readingClass}`}>
       <a className="skip-link" href="#main-content">Skip to main content</a>
-      <header className="app-header">
-        <button aria-label="WebAccessible participant home" className="brand" onClick={() => navigate("participant")} type="button">
-          <span className="brand__mark"><MousePointer2 aria-hidden="true" size={23} /></span>
-          <span className="brand__word">WebAccessible</span>
-        </button>
-
-        <div className="app-header__actions">
-          {showRoleNavigation ? (
-            <nav aria-label="View" className="role-switcher">
-              <button aria-current={view === "participant" ? "page" : undefined} className={view === "participant" ? "active" : undefined} onClick={() => navigate("participant")} type="button"><UserRound aria-hidden="true" size={18} /> Participant</button>
-              <button aria-current={view === "caregiver" ? "page" : undefined} className={view === "caregiver" ? "active" : undefined} onClick={() => navigate("caregiver")} type="button"><HeartHandshake aria-hidden="true" size={18} /> Caregiver</button>
-            </nav>
-          ) : null}
-          <ProviderStatus error={readinessError} loading={readinessLoading} onRefresh={() => void loadReadiness()} readiness={readiness} />
-          {activeContext && !activeSession ? (
-            <button aria-label="End this signed-in session" className="icon-button" onClick={signOut} title="Sign out" type="button"><LogOut aria-hidden="true" size={21} /></button>
-          ) : null}
-        </div>
-      </header>
-
-      {view === "caregiver" ? (
-        <CaregiverView context={caregiver} onAuthenticated={acceptCaregiver} onParticipant={() => navigate("participant")} />
-      ) : activeSession && participant ? (
-        <ParticipantSession initial={activeSession.snapshot} initialLiveViewUrl={activeSession.liveViewUrl} onExit={() => setActiveSession(undefined)} participant={participant} />
-      ) : participant ? (
-        <RoutineChooser onStart={startRoutine} participant={participant} startError={startError} starting={starting} />
+      {view === "landing" ? (
+        <LandingPage hasParticipant={Boolean(participant)} onCaregiver={() => navigate("caregiver")} onStart={() => navigate("participant")} />
       ) : (
-        <SetupView onCaregiver={() => navigate("caregiver")} onComplete={acceptParticipant} />
+        <>
+          <header className="app-header">
+            <button aria-label="WebAccessible participant home" className="brand" onClick={() => navigate("participant")} type="button">
+              <span className="brand__mark"><MousePointer2 aria-hidden="true" size={23} /></span>
+              <span className="brand__word">WebAccessible</span>
+            </button>
+
+            <div className="app-header__actions">
+              {showRoleNavigation ? (
+                <nav aria-label="View" className="role-switcher">
+                  <button aria-current={view === "participant" ? "page" : undefined} className={view === "participant" ? "active" : undefined} onClick={() => navigate("participant")} type="button"><UserRound aria-hidden="true" size={18} /> Participant</button>
+                  <button aria-current={view === "caregiver" ? "page" : undefined} className={view === "caregiver" ? "active" : undefined} onClick={() => navigate("caregiver")} type="button"><HeartHandshake aria-hidden="true" size={18} /> Caregiver</button>
+                </nav>
+              ) : null}
+              <ProviderStatus error={readinessError} loading={readinessLoading} onRefresh={() => void loadReadiness()} readiness={readiness} />
+              {activeContext && !activeSession ? (
+                <button aria-label="End this signed-in session" className="icon-button" onClick={signOut} title="Sign out" type="button"><LogOut aria-hidden="true" size={21} /></button>
+              ) : null}
+            </div>
+          </header>
+
+          {view === "caregiver" ? (
+            <CaregiverView context={caregiver} onAuthenticated={acceptCaregiver} onParticipant={() => navigate("participant")} />
+          ) : activeSession && participant ? (
+            <ParticipantSession initial={activeSession.snapshot} initialLiveViewUrl={activeSession.liveViewUrl} onExit={() => setActiveSession(undefined)} participant={participant} />
+          ) : participant ? (
+            <RoutineChooser onStart={startRoutine} participant={participant} startError={startError} starting={starting} />
+          ) : (
+            <SetupView onCaregiver={() => navigate("caregiver")} onComplete={acceptParticipant} />
+          )}
+        </>
       )}
     </div>
   );

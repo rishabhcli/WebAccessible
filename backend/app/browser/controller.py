@@ -43,6 +43,10 @@ class BrowserRuntime:
     page_instance_id: UUID = field(default_factory=uuid4)
     sequence_no: int = 0
     selector_cache: dict[str, str] = field(default_factory=dict)
+    active_callbacks: int = 0
+    callbacks_idle: asyncio.Event = field(default_factory=asyncio.Event)
+    navigation_handler: Callable[[Any], None] | None = None
+    event_tasks: set[asyncio.Task[None]] = field(default_factory=set)
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -177,6 +181,15 @@ class BrowserController:
                 provider_id = str(row["provider_session_id"])
             else:
                 provider_id = runtime.provider_session_id
+                await runtime.callbacks_idle.wait()
+                if runtime.navigation_handler is not None:
+                    runtime.page.remove_listener("framenavigated", runtime.navigation_handler)
+                if runtime.event_tasks:
+                    await asyncio.gather(*runtime.event_tasks, return_exceptions=True)
+                try:
+                    await runtime.browser.close()
+                except Exception:
+                    pass
                 try:
                     await runtime.playwright.stop()
                 except Exception:
@@ -201,10 +214,19 @@ class BrowserController:
 
     async def _install_page(self, runtime: BrowserRuntime, page: Page) -> None:
         async def emit(_source: Any, payload: Any) -> None:
-            if not isinstance(payload, dict) or payload.get("trusted") is not True:
-                return
-            await self._emit_page_event(runtime, page, redact_payload(payload))
+            if runtime.active_callbacks == 0:
+                runtime.callbacks_idle.clear()
+            runtime.active_callbacks += 1
+            try:
+                if not isinstance(payload, dict) or payload.get("trusted") is not True:
+                    return
+                await self._emit_page_event(runtime, page, redact_payload(payload))
+            finally:
+                runtime.active_callbacks -= 1
+                if runtime.active_callbacks == 0:
+                    runtime.callbacks_idle.set()
 
+        runtime.callbacks_idle.set()
         try:
             await page.expose_binding("__webaccessibleEmit", emit)
         except Exception as error:
@@ -217,8 +239,11 @@ class BrowserController:
             if frame == page.main_frame:
                 runtime.page_instance_id = uuid4()
                 runtime.sequence_no = 0
-                asyncio.create_task(self._emit_navigation(runtime, page))
+                task = asyncio.create_task(self._emit_navigation(runtime, page))
+                runtime.event_tasks.add(task)
+                task.add_done_callback(runtime.event_tasks.discard)
 
+        runtime.navigation_handler = navigation
         page.on("framenavigated", navigation)
 
     async def _emit_navigation(self, runtime: BrowserRuntime, page: Page) -> None:
