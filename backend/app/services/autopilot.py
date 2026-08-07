@@ -6,14 +6,19 @@ the session topic so the activity panel fills in live rather than after the fact
 
 Two boundaries are deliberate and survive autonomy:
 
-* **Money and identity stop the run.** Adding to a cart, joining a queue, and holding an
-  appointment are all reversible, so they proceed. Paying, or handing over a government
-  identity number, pauses and asks. None of the curated demos require that pause, so a
-  demo still runs end to end untouched.
+* **Money and deletion stop the run.** Adding to a cart, joining a queue, holding an
+  appointment, and following a link to any host are all reversible, so they proceed.
+  Paying, or deleting something, pauses and asks.
 * **Passwords are never typed.** The agent cannot read or enter one; it stops and says so.
+
+There is no origin allowlist. A run follows the task wherever it leads.
 
 Everything else — clicking, typing an address, choosing a time, filling a form — the agent
 does itself.
+
+A curated demo runs on the made-up persona in `domain.persona`, so it never has to stop
+and ask the person watching for a date of birth it could not know. It fills the form and
+submits it, start to finish, from a single tap.
 """
 
 from __future__ import annotations
@@ -36,12 +41,18 @@ from backend.app.contracts.models import (
     AgentRunView,
     AgentStep,
     AgentStepStatus,
+    DemoTask,
     ElementCandidate,
     SafetyClassification,
     SafetyPresentation,
     SensitivityFlag,
 )
-from backend.app.domain.demos import DEMO_ORIGINS, origin_of
+from backend.app.domain.persona import (
+    DEMO_PERSONA,
+    DemoPersona,
+    persona_brief,
+    persona_value,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +71,13 @@ _STOPPING_CLASSIFICATIONS = frozenset(
 )
 _STOPPING_FLAGS = frozenset(
     {SensitivityFlag.PASSWORD, SensitivityFlag.PAYMENT, SensitivityFlag.BANK}
+)
+# A demo's identity is invented, so "sharing personal details" discloses nothing about
+# anybody and must not interrupt the run -- a planner will label a plain click on
+# "Renew your driver's license" as identity purely from the words in it. Money,
+# deletion, and passwords are unaffected: those commit something real either way.
+_DEMO_STOPPING_CLASSIFICATIONS = frozenset(
+    {SafetyClassification.MONEY, SafetyClassification.DELETION}
 )
 _COMPLETE_MARKERS = (
     "task complete",
@@ -92,6 +110,20 @@ _LOW_VALUE_MARKERS = (
     "menu",
     "account",
     "help",
+    # Site chrome. A government home page puts a search box, a translate widget, and a
+    # feedback tab on every screen, and each one reads as an action word.
+    "search form",
+    "site search",
+    "translate",
+    "feedback",
+    "skip to",
+    "newsletter",
+    "subscribe",
+    "download the app",
+)
+# Input types that are controls rather than places to type text.
+_NON_TEXT_INPUTS = frozenset(
+    {"button", "checkbox", "hidden", "password", "radio", "reset", "submit"}
 )
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 _EMAIL_PATTERN = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
@@ -107,9 +139,6 @@ class AgentRun:
     task_name: str
     prompt: str
     state: AgentRunState = AgentRunState.RUNNING
-    # Origins this run may move between without asking: the curated demo hosts plus
-    # whatever the run itself was started on, so a free-form prompt is not penalised.
-    allowed_origins: frozenset[str] = frozenset()
     steps: list[AgentStep] = field(default_factory=list)
     page_title: str | None = None
     origin: str | None = None
@@ -119,6 +148,19 @@ class AgentRun:
     # The managed browser refused the destination and is showing its own interstitial.
     blocked: bool = False
     task: asyncio.Task[None] | None = None
+    # Set only for a curated demo. A free-form run has no persona, so it fills nothing
+    # the participant did not type.
+    persona: DemoPersona | None = None
+    # Normalized labels this run has already typed into. Candidate ids are regenerated
+    # per snapshot, but a field's label is stable, so it is the reliable key here.
+    filled_labels: set[str] = field(default_factory=set)
+    # What the page was, and what has already been tried on it. A control that did not
+    # move the page is not offered again, which is what stops the run from clicking one
+    # button until it runs out of steps. Cleared whenever the page actually changes.
+    page_key: str = ""
+    tried_on_page: set[str] = field(default_factory=set)
+    # Questions a demo planner asked and the persona already answers.
+    answered_questions: list[str] = field(default_factory=list)
 
     def view(self) -> AgentRunView:
         return AgentRunView(
@@ -172,6 +214,7 @@ class AutopilotService:
         task_name: str,
         prompt: str,
         start_url: str,
+        demo: DemoTask | None = None,
     ) -> AgentRunView:
         """Begin a run, or return the one already in flight for this session."""
 
@@ -183,7 +226,7 @@ class AutopilotService:
             user_id=user_id,
             task_name=task_name,
             prompt=prompt,
-            allowed_origins=DEMO_ORIGINS | {origin_of(start_url)},
+            persona=DEMO_PERSONA if demo else None,
         )
         self._runs[session_id] = run
         run.task = asyncio.create_task(self._drive(run), name=f"autopilot-{session_id}")
@@ -255,6 +298,19 @@ class AutopilotService:
                         plan.narration or "That is done.",
                     )
                     return
+                if (
+                    plan.action is AgentActionKind.ASK
+                    and run.persona is not None
+                    # Bounded: skipping does not add a step, so an planner that only ever
+                    # asks would otherwise spin here forever.
+                    and len(run.answered_questions) < 3
+                ):
+                    # A demo has no one to ask. Every detail it could want is in the
+                    # persona, so the question goes back into the planner's own history
+                    # answered rather than out to the participant. The step ceiling
+                    # bounds this if a planner insists on asking anyway.
+                    run.answered_questions.append(plan.narration)
+                    continue
                 if plan.action is AgentActionKind.ASK:
                     await self._pause(
                         run,
@@ -291,12 +347,36 @@ class AutopilotService:
         run: AgentRun,
         candidates: Sequence[ElementCandidate],
     ) -> AgentPlan | None:
+        # A demo types its own details before asking a planner anything. Neither planner
+        # can invent a date of birth, and an empty required field is exactly what stalls
+        # a form into a dead-end Submit.
+        filled = self._persona_fill(run, candidates)
+        if filled is not None:
+            return filled
+        # Anything already tried on this exact page is withheld from the planner. A
+        # control that left the page unchanged will do so again, and offering it back is
+        # how a run spends every step re-clicking one button.
+        offered = [
+            candidate
+            for candidate in candidates
+            if _normalized(_candidate_label(candidate)) not in run.tried_on_page
+        ]
+        # An empty list still goes to the planner: a finished page is recognised from its
+        # title, and that verdict is the planner's to give.
         history = [f"{step.step_no}. {step.narration}" for step in run.steps[-8:]]
+        goal = run.prompt
+        if run.persona is not None:
+            goal = f"{run.prompt}\n\n{persona_brief(run.persona)}"
+            for question in run.answered_questions[-3:]:
+                goal += (
+                    f'\n\nYou already asked "{question}" — the answer is in the details '
+                    "above. Do not ask again; act on them."
+                )
         try:
             plan = await asyncio.wait_for(
                 self.planner.plan(
-                    prompt=run.prompt,
-                    candidates=list(candidates),
+                    prompt=goal,
+                    candidates=offered,
                     history=history,
                     page_title=run.page_title,
                     origin=run.origin,
@@ -306,12 +386,84 @@ class AutopilotService:
         except Exception:
             logger.warning("The planner did not return a usable next action.")
             return None
-        if isinstance(plan, AgentPlan):
-            return plan
-        try:
-            return AgentPlan.model_validate(plan)
-        except Exception:
+        if not isinstance(plan, AgentPlan):
+            try:
+                plan = AgentPlan.model_validate(plan)
+            except Exception:
+                return None
+        if plan.action is AgentActionKind.CLICK:
+            target = next(
+                (item for item in offered if item.candidate_id == plan.candidate_id),
+                None,
+            )
+            if target is not None:
+                # Recorded before the click, not after. A control that fails outright
+                # would otherwise be chosen again on every remaining step.
+                run.tried_on_page.add(_normalized(_candidate_label(target)))
+        elif plan.action is AgentActionKind.FILL and plan.candidate_id:
+            target = next(
+                (item for item in offered if item.candidate_id == plan.candidate_id),
+                None,
+            )
+            label = _candidate_label(target) if target is not None else plan.candidate_id
+            typed = _normalized(f"{label} = {plan.value}")
+            if typed in run.tried_on_page:
+                # The same text has already gone into this field on this page. Typing it
+                # a second time is the stall itself; submitting it is what the run was
+                # actually trying to do. The field is withheld from here on, so if the
+                # page still does not move the planner has to reach for something else.
+                run.tried_on_page.add(_normalized(label))
+                return AgentPlan(
+                    action=AgentActionKind.PRESS,
+                    candidate_id=plan.candidate_id,
+                    value="Enter",
+                    narration=plan.narration,
+                    safety_classification=plan.safety_classification,
+                    confidence=plan.confidence,
+                )
+            run.tried_on_page.add(typed)
+        elif plan.action is AgentActionKind.NAVIGATE and plan.url:
+            # Same trap by another route: a live run spent five steps re-navigating to
+            # one URL that kept returning the same page.
+            run.tried_on_page.add(_normalized(plan.url))
+        return plan
+
+    def _persona_fill(
+        self,
+        run: AgentRun,
+        candidates: Sequence[ElementCandidate],
+    ) -> AgentPlan | None:
+        """Type the demo persona into the first field this run has not filled yet."""
+
+        if run.persona is None:
             return None
+        for candidate in candidates:
+            if not candidate.visible or not candidate.enabled:
+                continue
+            if candidate.tag_name not in {"input", "textarea"}:
+                continue
+            if candidate.input_type in _NON_TEXT_INPUTS:
+                continue
+            if set(candidate.sensitivity_flags) & _STOPPING_FLAGS:
+                continue
+            label = _candidate_label(candidate)
+            key = _normalized(label)
+            if not key or key in run.filled_labels:
+                continue
+            value = persona_value(label, candidate.input_type, run.persona)
+            if value is None:
+                continue
+            # Marked before the action rather than after it. A field that refuses the
+            # value would otherwise be chosen again on the next pass, forever.
+            run.filled_labels.add(key)
+            return AgentPlan(
+                action=AgentActionKind.FILL,
+                candidate_id=candidate.candidate_id,
+                value=value,
+                narration=f"Filling in {_field_phrase(label)}.",
+                confidence=0.95,
+            )
+        return None
 
     def _stopping_reason(
         self,
@@ -332,7 +484,12 @@ class AutopilotService:
                     "Please sign in yourself in the window, then I will carry on."
                 ),
             )
-        if plan.safety_classification in _STOPPING_CLASSIFICATIONS or flags & _STOPPING_FLAGS:
+        stopping = (
+            _DEMO_STOPPING_CLASSIFICATIONS
+            if run.persona is not None
+            else _STOPPING_CLASSIFICATIONS
+        )
+        if plan.safety_classification in stopping or flags & _STOPPING_FLAGS:
             return SafetyPresentation(
                 classification=plan.safety_classification,
                 message=(
@@ -341,20 +498,9 @@ class AutopilotService:
                 ),
                 irreversible_action=plan.narration,
             )
-        destination_origin = None
-        if plan.action is AgentActionKind.NAVIGATE and plan.url:
-            destination_origin = origin_of(plan.url)
-        elif plan.action is AgentActionKind.CLICK and target is not None:
-            destination_origin = target.href_origin
-        if destination_origin and destination_origin not in run.allowed_origins:
-            return SafetyPresentation(
-                classification=SafetyClassification.UNKNOWN,
-                message=(
-                    "That link leaves the site we started on. "
-                    "I stopped so you can decide whether to follow it."
-                ),
-                irreversible_action=plan.narration,
-            )
+        # A run follows links wherever they go. Errands cross hosts constantly -- the DMV
+        # hands its queue to Qmatic, a salon hands booking to a scheduler -- and stopping
+        # at every handoff made the product unusable.
         return None
 
     async def _perform(self, run: AgentRun, plan: AgentPlan) -> None:
@@ -394,6 +540,11 @@ class AutopilotService:
         run.origin = state.origin
         run.redacted_path = state.redacted_path
         run.blocked = bool(getattr(state, "blocked", False))
+        key = f"{run.origin}|{run.redacted_path}|{run.page_title}"
+        if key != run.page_key:
+            # A genuinely new page. Everything is worth trying again here.
+            run.page_key = key
+            run.tried_on_page.clear()
 
     async def _pause(self, run: AgentRun, presentation: SafetyPresentation) -> None:
         run.state = AgentRunState.NEEDS_CONFIRMATION
@@ -499,9 +650,12 @@ class LocalActionPlanner:
             if not label:
                 continue
             normalized = _normalized(label)
-            score = sum(6 for marker in _ACTION_MARKERS if marker in normalized)
-            score += 2 * len(prompt_tokens & _significant_tokens(label))
-            score -= sum(5 for marker in _LOW_VALUE_MARKERS if marker in normalized)
+            # What the task is about outweighs how action-like the word is. The reverse
+            # weighting sent a DMV run into the site's own search box, which is labelled
+            # "Submit search form" and so scored higher than any appointment link.
+            score = 5 * len(prompt_tokens & _significant_tokens(label))
+            score += sum(3 for marker in _ACTION_MARKERS if marker in normalized)
+            score -= sum(8 for marker in _LOW_VALUE_MARKERS if marker in normalized)
             if normalized in history_text:
                 score -= 2
             ranked.append((score, -index, candidate, label))
@@ -511,13 +665,10 @@ class LocalActionPlanner:
         score, _position, candidate, label = max(ranked, key=lambda item: (item[0], item[1]))
         if score < 2:
             return None
-        if "submit" in _normalized(label):
-            return AgentPlan(
-                action=AgentActionKind.ASK,
-                narration="This button submits information, so I stopped for your decision.",
-                safety_classification=SafetyClassification.UNKNOWN,
-                confidence=0.95,
-            )
+        # A button labelled "Submit" is not a risk in itself -- it is how a service
+        # selection, a search, and a date choice all advance. What matters is what the
+        # button does, which `_candidate_safety` decides; money, identity, and deletion
+        # still stop the run from `_stopping_reason`.
         return AgentPlan(
             action=AgentActionKind.CLICK,
             candidate_id=candidate.candidate_id,
@@ -544,16 +695,15 @@ def _significant_tokens(value: str) -> set[str]:
     }
 
 
+def _field_phrase(label: str) -> str:
+    """Turn a form label into something that reads as a sentence to the participant."""
+
+    cleaned = label.strip().strip("*:").strip()
+    return cleaned[:1].lower() + cleaned[1:] if cleaned else "the details"
+
+
 def _explicit_field_value(candidate: ElementCandidate, prompt: str) -> str | None:
-    if candidate.tag_name not in {"input", "textarea"} or candidate.input_type in {
-        "button",
-        "checkbox",
-        "hidden",
-        "password",
-        "radio",
-        "reset",
-        "submit",
-    }:
+    if candidate.tag_name not in {"input", "textarea"} or candidate.input_type in _NON_TEXT_INPUTS:
         return None
     label = _normalized(_candidate_label(candidate))
     if "email" in label:

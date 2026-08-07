@@ -40,7 +40,9 @@ class Settings(BaseSettings):
     build_commit: str = "local-development"
 
     demo_target_name: str = "Get in line at the DMV"
-    demo_target_url: AnyHttpUrl = AnyHttpUrl("https://www.dmv.ca.gov/portal/appointments/")
+    demo_target_url: AnyHttpUrl = AnyHttpUrl(
+        "https://mt-cadmvoas.us.qmatic.cloud/branches"
+    )
     demo_fallback_url: AnyHttpUrl = AnyHttpUrl("https://booksy.com/en-us/s/haircut")
 
     browser_execution_provider: Literal["local", "browserbase"] = "local"

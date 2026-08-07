@@ -1,205 +1,228 @@
 # WebAccessible
 
-WebAccessible is a caregiver-supported browser agent for older adults. Ask it for an errand
-in your own words and it opens a managed cloud browser, does the task, and tells you each
-step in plain language as it goes — pausing only for money, identity, deletion, or a
-password. Verified runs are stored as readable EverOS skills and later replayed
-selector-first without a model call when the saved route still matches.
+**A web browser that does the errand for you.**
 
-The application code is now present across the React UI, FastAPI service, Browserbase bridge,
-EverOS memory adapter, Snowflake telemetry and Cortex adapters, Snowflake migrations, and
-Streamlit reporting app. That implementation status is not a claim that the current revision
-has been deployed or that a full live cold/warm qualification run has passed. See
-[`docs/SETUP_STATUS.md`](docs/SETUP_STATUS.md) for the evidence boundary.
+Most of the internet assumes you are quick with a mouse, comfortable with a form that
+resets when you get one field wrong, and able to read grey text at eleven pixels. For a lot
+of older adults, that means the DMV appointment does not get booked, the prescription does
+not get refilled, and a daughter three time zones away gets another phone call that starts
+"I'm sorry to bother you again."
 
-## Product Boundaries
+WebAccessible is for that person. You tell it what you need — in your own words, the way
+you would tell a person — and it goes and does it. You watch it happen in a real browser
+window on the screen, and it tells you what it is doing in one plain sentence at a time.
 
-WebAccessible completes the task itself in a managed Browserbase session and reports each
-step in plain language. The participant watches rather than clicks.
+## What it looks like to use
 
-- The agent drives the page over CDP: clicking, typing, selecting, and navigating. Every
-  target must come from the same sanitized snapshot the planner reasoned over.
-- **Money movement, identity submission, and deletion pause the run** and ask the
-  participant to decide. Reversible steps — adding to a cart, joining a queue, holding an
-  appointment — proceed without interruption.
-- **Passwords are never read or typed.** The run stops and hands the page over.
-- **Leaving the origin the run started on pauses** for confirmation.
-- Entry is passwordless: no participant login, and no caregiver access code.
-- Replay is deterministic and selector-first. A matching verified replay step creates no
-  guidance-model call.
-- Demo and production modes do not fall back to local provider fixtures.
+You open the page. There is no login, no password, no access code — it just opens.
 
-## Architecture
+Three common errands are offered as single buttons: get in line at the DMV, fill a grocery
+cart, book a haircut. You can also just type what you want: *"renew my library book"*, or
+*"order more cat food"*.
+
+Then you watch. A browser window fills the left side of the screen, and beside it a running
+list of what the agent is doing:
+
+> Clicking on the driver license renewal option.
+> Waiting for the page to load.
+> Clicking Get in Line Now to join the queue at the nearest DMV office.
+
+That list is written for you, not for a programmer. You will never see a CSS selector or an
+element ID. When it finishes, it tells you plainly: your place in line is held, the
+appointment is on the 14th at 10:40.
+
+## It remembers what you did
+
+This is the part that matters most, and it is the part a search engine cannot do for you.
+
+Weeks later you can ask, out loud or by typing, *"did I already pay the electric bill?"* —
+and get a real answer, because the run that paid it was stored as a memory:
+
+> Yes. You paid the PG&E electric bill of $128.44 on the 27th from the checking account
+> ending in 4412.
+
+It answers from what actually happened. If there is no completed run, it says so rather
+than guessing. That distinction is the whole point: a confident wrong answer about whether
+a bill got paid is worse than no answer.
+
+It also learns your routines. Once it has watched you do something a few times, it can
+notice when one has lapsed — *"you last renewed your library books about a month ago"* —
+and offer to do it again. Offers are dismissible and expire on their own; it does not nag.
+
+## What it will not do
+
+The agent drives the page itself: clicking, typing, choosing, navigating. Three things stop
+it cold and hand the decision back to you:
+
+- **Spending money.** It will fill a cart and walk right up to the checkout, then stop.
+- **Deleting something.** Same.
+- **Passwords.** It cannot read or type one, ever. It stops and asks you to sign in
+  yourself, then carries on from there.
+
+Everything short of that it just does, without interrupting you. Adding to a cart, joining
+a queue, holding an appointment, filling in a form, following a link to another site — all
+reversible, all uninterrupted. There is no list of approved websites; real errands wander
+across hosts constantly (the DMV hands its queue to a company called Qmatic halfway
+through), and stopping to ask at each handoff made the thing useless.
+
+## Someone can help from a distance
+
+There is a second door on the landing page, for the family member or caregiver. Behind it
+is the history of what was done, what it cost, the readable version of each learned
+routine, and a place to leave a short note that appears in the older adult's session.
+
+It is deliberately a *view*, not a remote control. The person at the keyboard is still the
+one whose errand it is.
+
+## The demo tasks use a made-up person
+
+The three offered errands run as a fictional woman — Margaret Whitfield, an invented
+address, an `@example.com` mailbox that can never receive mail, and a phone number from the
+block reserved for fiction. That way a demo can fill a real DMV form end to end without
+putting a real person's details anywhere. Anything you type yourself is treated as yours
+and filled from what you said, not from the persona.
+
+## Honest status
+
+The code is all here — the React interface, the FastAPI service, the browser bridge, the
+memory adapter, the telemetry and cost tables, the reporting app.
+
+What has *not* happened is a full frozen end-to-end qualification run. The DMV errand has
+been driven end to end against the live site and completes. The haircut errand stalls,
+because the booking site geolocates from the browser's IP address and serves the wrong
+city. Grocery is unverified. See [`docs/SETUP_STATUS.md`](docs/SETUP_STATUS.md) for exactly
+what has and has not been proven, and against which provider.
+
+## How it is built
 
 ```text
-Unified React landing, participant, and caregiver UI
+React interface (landing, participant, caregiver)
                 |
                 v
-FastAPI API, session state, SSE, and transient SQLite outbox
+FastAPI service, session state, live updates, local SQLite outbox
       |                    |                    |
       v                    v                    v
 Browserbase          EverOS memory       Snowflake + Cortex
-Session + CDP        Case/Skill/Episode  telemetry/cost/guidance
-      |
-      v
-Interactive Live View watched by the participant
-
-Snowflake product tables and evidence views
-                |
-                v
-Streamlit in Snowflake caregiver evidence app
+managed browser      what was done       planning, telemetry, cost
 ```
 
-Local development defaults to installed Playwright Chromium, a deterministic action planner,
-and an in-dashboard screenshot Live View. That path needs no cloud provider to start, navigate,
-or narrate a supported local task. Browserbase and Snowflake Cortex remain mandatory in demo
-and production; EverOS and Snowflake remain the durable memory and evidence providers. The
-SQLite file is only local operational state and an outbox, not sponsor evidence or durable
-memory.
+The browser the participant watches is a real managed Chrome session. The agent controls it
+over CDP and only ever acts on an element from the same sanitized page snapshot the planner
+reasoned about — it cannot be talked into clicking something that was not on the page.
 
-## Implemented Capabilities
-
-**Unified website**
-
-- A simple public landing page routes older adults and caregivers into their dedicated spaces.
-- The older-adult experience opens directly into a scoped guest session with large controls,
-  plain language, and no participant sign-up form.
-- The caregiver console shows safe live readiness for Browserbase, EverOS, Snowflake, and
-  Snowflake Cortex without exposing provider keys to the browser.
-
-**Participant UI**
-
-- Automatic passwordless guest entry with large text and voice guidance defaults.
-- Three ready errands — DMV virtual queue, Amazon Whole Foods cart, and a salon
-  appointment — plus a free-form prompt for anything else.
-- A browser-shaped dashboard: familiar tab and address chrome around either the local
-  development view or Browserbase Live View, with narrated actions beside it.
-- Conversational recall ("when's the DMV appointment you booked?") answered from EverOS
-  episode memory and the local activity ledger, phrased by Cortex, with a dated fallback
-  when Cortex is unavailable.
-- Pushed routine reminders, including lapsed ones ("you last did this about a month ago").
-- Live session state over authenticated server-sent events.
-- Explicit completed, prepared, safety-paused, escalated, failed, and provider-unavailable
-  states.
-
-**Caregiver UI**
-
-- Authenticated session history and selected-session detail.
-- Snowflake-backed cost-by-run display with explicit empty and unavailable states.
-- EverOS routine list and readable skill viewer.
-- Persisted escalation notes returned to the active participant session.
-
-**Backend and cloud data**
-
-- Signed participant/caregiver sessions and scoped API access.
-- A development-only local Chromium adapter plus Browserbase create, Live View, server-side
-  CDP attach, sanitized observation, highlight, deterministic verification, and termination.
-- Rules-based stuck detection, bounded Snowflake Cortex cold/repair guidance, verified route
-  recording, selector-first replay, and single-step repair.
-- EverOS profile, routine search/read, teach `add`/`flush`, skill retrieval, and episode lookup.
-- Consent-gated activity episodes and deterministic daily/weekly/monthly routine timing context.
-- Explainable in-app routine reminders with snooze and a required **Start with guidance** permission step.
-- SQLite operational event ledger plus retrying Snowflake outbox.
-- Idempotent Snowflake `MERGE` writers, actual-usage cost calculator, effective-dated rate
-  cards, reconciliation views, evidence queries, and a read-only Streamlit application.
-
-The HTTP surface is documented at `/docs` while the API is running. Core endpoints include
-`/health`, `/ready`, participant sessions, task/session lifecycle, Browserbase Live View,
-event batches, help/dismiss, SSE, routines, skills, episode answers, escalations, and the
-caregiver dashboard.
-
-## Repository Map
+Memories live in EverOS. Cost and telemetry live in Snowflake, priced from actual token
+usage against dated rate cards; when a rate is missing it reports *unavailable* rather than
+guessing. The local SQLite file is scratch space and an outbox, never the record.
 
 ```text
 backend/app/
-  api/                 FastAPI routes
-  browser/             CDP observer, sanitizer, highlighter, resolver, verifier
-  contracts/           Pydantic runtime contracts
-  domain/              safety, state transitions, and skill rules
-  integrations/        Local browser, Browserbase, EverOS, Snowflake, and Cortex adapters
-  persistence/         operational SQLite ledger and outbox
-  services/            orchestration, guidance, replay, repair, telemetry, cost
-web/src/
-  landing/             public welcome and role entry points
-  routines/            routine selection
-  session/             Live View and guidance experience
-  caregiver/           history, costs, notes, and routine evidence
-contracts/             portable JSON Schemas
-snowflake/
-  migrations/          product tables and evidence views
-  queries/             drill-through and reconciliation queries
-  streamlit/           caregiver evidence app
-scripts/               Snowflake deployment and live readiness commands
-docs/                  decisions, provider contracts, runbook, and evidence boundary
+  api/            HTTP routes
+  browser/        page observer, sanitizer, selector resolver, verifier
+  domain/         safety rules, demo tasks, the fictional persona
+  integrations/   Browserbase, EverOS, Snowflake/Cortex, local browser
+  services/       autopilot, recall, replay, repair, telemetry, cost
+web/src/          landing, participant dashboard, caregiver console
+snowflake/        migrations, evidence queries, Streamlit app
+scripts/          deployment, readiness, and memory seeding
+docs/             decisions, provider contracts, evidence boundary
 ```
 
-## Local Development
+---
 
-Required tool versions are recorded in [`.tool-versions`](.tool-versions): Node.js 26.5.1,
-Python 3.12.11, and pnpm 11.9.0. The container build pins `uv` 0.11.24. Snowflake deployment
-also requires the `snow` CLI; Fly deployment requires `flyctl`.
+# Running it
 
-1. Install dependencies and the Playwright Chromium runtime used for CDP attachment:
+Versions are pinned in [`.tool-versions`](.tool-versions): Node 26.5.1, Python 3.12.11,
+pnpm 11.9.0. Snowflake deployment also needs the `snow` CLI; Fly needs `flyctl`.
 
-   ```bash
-   cp .env.example .env
-   make setup
-   ```
-
-2. Keep `APP_ENV=development`, `BROWSER_EXECUTION_PROVIDER=local`, and
-   `ACTION_PLANNER_PROVIDER=local` for a provider-independent local run. Provider credentials
-   are optional in this mode. Add them only when testing memory, telemetry, or cloud readiness.
-
-3. Run the backend:
-
-   ```bash
-   make backend
-   ```
-
-4. In another terminal, run Vite against the local API:
-
-   ```bash
-   VITE_API_BASE_URL=http://localhost:8000 pnpm dev
-   ```
-
-5. Open `http://localhost:5173`. FastAPI documentation is at
-   `http://localhost:8000/docs`.
-
-Local execution uses the same sanitized snapshots, selector-bound actions, safety pauses, and
-CDP controller as Browserbase. The dashboard refreshes a read-only local browser image while
-the agent navigates. To exercise the production providers from a local API process, set:
+### Setup
 
 ```bash
-BROWSER_EXECUTION_PROVIDER=browserbase
-ACTION_PLANNER_PROVIDER=snowflake_cortex
+cp .env.example .env
+make setup
 ```
 
-For a production-shaped local process that serves the built UI and API from one origin:
+### Run it as one app
+
+This builds the interface and serves it and the API from a single origin — the simplest way
+to actually use it:
 
 ```bash
 pnpm build
-PORT=8000 pnpm start
+PORT=3001 pnpm start
 ```
 
-Basic process health does not call providers:
+Open `http://localhost:3001`. API docs are at `/docs`.
+
+### Run it for development
+
+Two processes, with hot reload on both:
 
 ```bash
-curl -fsS http://localhost:8000/health
-curl -fsS http://localhost:8000/ready
+make backend                                        # API on :8000, --reload
+VITE_API_BASE_URL=http://localhost:8000 pnpm dev    # interface on :5173
 ```
 
-The stricter readiness script requires authorized Browserbase, EverOS, Snowflake, and guidance
-capabilities and rejects fixture mode. Browserbase reaches `authorized` only while a
-WebAccessible-owned managed session is attached:
+> If a change does not seem to take effect, check you are not talking to an older server
+> process still running from a previous session — `ps aux | grep uvicorn`.
+
+### Making the demos actually work
+
+The offered errands need the Cortex planner. The deterministic local planner is a
+development fallback that cannot navigate a real multi-step site, and `config.py` rejects
+it outright for demo and production:
 
 ```bash
-API_PUBLIC_URL=http://localhost:8000 ./scripts/live-readiness.sh
+ACTION_PLANNER_PROVIDER="snowflake_cortex"     # in .env, needs Snowflake credentials
 ```
 
-## Snowflake Deployment
+Leave `BROWSER_EXECUTION_PROVIDER=local` to drive a local Playwright Chromium with no cloud
+browser account, or set it to `browserbase` for the managed session used in production.
 
-The Snowflake CLI connection name defaults to `webaccessible`. It must point at the scoped
-service role, warehouse, `WEBACCESSIBLE` database, and `APP` schema.
+### Giving it a history to remember
+
+A fresh install has no memories, so there is nothing for recall to answer. To seed a
+realistic one — errands with real dates, amounts, and confirmation numbers — written
+through the live EverOS path:
+
+```bash
+uv run python scripts/seed-grandma-memory.py --verify
+```
+
+It prints one line to paste into the browser console so the page adopts that history.
+
+### Checking it is alive
+
+```bash
+curl -fsS http://localhost:3001/health     # no providers called
+curl -fsS http://localhost:3001/ready      # per-capability provider state
+```
+
+The stricter gate, which requires authorized providers and refuses fixture mode:
+
+```bash
+API_PUBLIC_URL=http://localhost:3001 ./scripts/live-readiness.sh
+```
+
+`/ready` reports each capability independently as `unconfigured`, `configured`,
+`reachable`, `authorized`, `unavailable`, or `capacity_exhausted`. A green `/ready` is a
+runtime preflight, not proof that an end-to-end run has been captured.
+
+### The checks CI runs
+
+```bash
+uv run ruff check backend
+uv run mypy backend
+uv run pytest
+pnpm typecheck
+pnpm build
+```
+
+## Deploying
+
+### Snowflake
+
+The CLI connection defaults to `webaccessible` and must point at the scoped service role,
+warehouse, `WEBACCESSIBLE` database, and `APP` schema.
 
 ```bash
 snow connection test --connection webaccessible
@@ -207,36 +230,21 @@ SNOWFLAKE_CONNECTION=webaccessible ./scripts/apply-snowflake.sh
 SNOWFLAKE_CONNECTION=webaccessible ./scripts/deploy-streamlit.sh
 ```
 
-To deploy and open the Streamlit app in one command:
+Migrations apply in order: `001_session_steps.sql`, `002_product_tables.sql`,
+`003_evidence_views.sql`, `004_cortex_rate_cards.sql`. Rate-card rows must exist in
+`COST_RATE_CARDS` before a real cost can be calculated.
 
-```bash
-SNOWFLAKE_CONNECTION=webaccessible OPEN_STREAMLIT=1 ./scripts/deploy-streamlit.sh
-```
+### Fly
 
-The migration script applies, in order:
-
-1. `001_session_steps.sql`
-2. `002_product_tables.sql`
-3. `003_evidence_views.sql`
-
-Published effective rate-card rows must exist in `COST_RATE_CARDS` before an actual cost can be
-calculated. The calculator deliberately reports unavailable rather than guessing a missing
-rate or treating estimated tokens as actual.
-
-## Fly Deployment
-
-[`fly.toml`](fly.toml) defines the `webaccessible-care` app in `sjc`, one always-running shared
-machine, HTTPS, and a persistent `/data` volume for transient operational state. The Docker
-image builds the React application and serves it from FastAPI on port 8080.
-
-For a new Fly app, provision the app and volume once:
+[`fly.toml`](fly.toml) defines the `webaccessible-care` app in `sjc` with a persistent
+`/data` volume. First time only:
 
 ```bash
 flyctl apps create webaccessible-care
 flyctl volumes create webaccessible_data --app webaccessible-care --region sjc --size 1
 ```
 
-With the values exported in the current shell, install the live service secrets:
+Install secrets from your shell environment, then deploy:
 
 ```bash
 flyctl secrets set --app webaccessible-care \
@@ -252,67 +260,19 @@ flyctl secrets set --app webaccessible-care \
   SESSION_SIGNING_SECRET="$(openssl rand -hex 32)" \
   APP_PUBLIC_URL="https://webaccessible-care.fly.dev" \
   API_PUBLIC_URL="https://webaccessible-care.fly.dev"
-```
 
-Deploy and inspect the hosted process:
-
-```bash
 flyctl deploy --app webaccessible-care
 flyctl status --app webaccessible-care
-flyctl logs --app webaccessible-care --no-tail
 curl -fsS https://webaccessible-care.fly.dev/health
 ```
 
-During an attached Browserbase task, run the strict provider gate:
+## Further reading
 
-```bash
-API_PUBLIC_URL=https://webaccessible-care.fly.dev ./scripts/live-readiness.sh
-```
-
-Passing that script proves only the current runtime readiness response. Demo readiness still
-requires the captured cold teach run, retrievable EverOS objects, warm replay, explicit
-Browserbase termination, Snowflake rows, and Streamlit drill-through listed in the demo
-runbook and evidence manifest.
-
-## Provider State Labels
-
-`GET /ready` uses these labels independently for each capability:
-
-| Label | Meaning |
-|---|---|
-| `unconfigured` | Required configuration is absent. |
-| `configured` | Required names/secrets are present; no successful live operation is asserted. |
-| `reachable` | The provider answered a live request; authorization is not yet asserted. |
-| `authorized` | The required scoped live operation succeeded. |
-| `unavailable` | A configured provider failed the current live check. |
-| `capacity_exhausted` | Browserbase rejected work because the account has no current capacity. |
-
-`ready: true` is a runtime preflight signal, not a substitute for a frozen end-to-end evidence
-run. Fixture state, unsynchronized rows, disconnected Streamlit data, or a configured-only
-provider cannot support a live sponsor claim.
-
-## Static Checks and Build
-
-The CI workflow runs the same non-provider checks:
-
-```bash
-uv sync --frozen --all-groups
-pnpm install --frozen-lockfile
-uv run ruff check backend
-uv run mypy backend
-uv run pytest
-pnpm typecheck
-pnpm build
-```
-
-## Source Documents
-
-- [`webaccessible-spec.md`](webaccessible-spec.md): canonical product behavior and constraints.
-- [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md): component contracts, work packages, and
-  evidence gates.
-- [`AGENTS.md`](AGENTS.md): repository operating rules.
-- [`SPONSORS.md`](SPONSORS.md) and [`docs/sponsors/`](docs/sponsors/): provider roles and proof
-  requirements.
-- [`docs/demo-runbook.md`](docs/demo-runbook.md): exact cold/warm qualification sequence.
-- [`docs/evidence-manifest.md`](docs/evidence-manifest.md): artifacts required before a demo
-  readiness claim.
+- [`AGENTS.md`](AGENTS.md) — operating rules for working in this repository.
+- [`webaccessible-spec.md`](webaccessible-spec.md) — original product spec. Predates the
+  move to an autonomous agent; `AGENTS.md` supersedes it where they disagree.
+- [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) — work packages and evidence gates.
+- [`SPONSORS.md`](SPONSORS.md), [`docs/sponsors/`](docs/sponsors/) — provider roles and
+  what counts as proof for each.
+- [`docs/SETUP_STATUS.md`](docs/SETUP_STATUS.md) — what is actually proven today.
+- [`docs/demo-runbook.md`](docs/demo-runbook.md) — the qualification sequence.

@@ -611,6 +611,7 @@ async def start_agent_run(
         task_name=task_name,
         prompt=body.prompt,
         start_url=start_url,
+        demo=demo,
     )
 
 

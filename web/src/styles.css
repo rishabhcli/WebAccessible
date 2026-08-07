@@ -22,6 +22,12 @@
   --green-soft: #e1f1e8;
   --focus: #005fcc;
   --header-height: 72px;
+  --motion-fast: 140ms;
+  --motion-medium: 240ms;
+  --motion-slow: 520ms;
+  --ease-standard: cubic-bezier(0.2, 0.75, 0.25, 1);
+  --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
+  --shadow-lift: 0 16px 30px -22px rgba(15, 60, 40, 0.58);
   letter-spacing: 0;
 }
 
@@ -5268,3 +5274,366 @@ tbody tr:last-child td {
 .button--small { min-height: 40px; padding: 6px 14px; font-size: 0.94rem; }
 .button--ghost { border: 1px solid var(--line); background: transparent; color: var(--ink); }
 .icon-button--small { width: 36px; height: 36px; }
+
+/* ==========================================================================
+   Guided motion and interaction feedback
+   ========================================================================== */
+
+@keyframes guided-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes guide-pointer-settle {
+  0% {
+    opacity: 0;
+    transform: translate(-8px, -8px) scale(0.9);
+  }
+
+  65% {
+    opacity: 1;
+    transform: translate(2px, 2px) scale(1.04);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+@keyframes target-confirm {
+  0%, 100% {
+    box-shadow: 0 0 0 6px rgba(37, 129, 87, 0.12);
+  }
+
+  50% {
+    box-shadow: 0 0 0 10px rgba(37, 129, 87, 0.06);
+  }
+}
+
+@keyframes live-breathe {
+  0%, 100% {
+    box-shadow: 0 0 0 4px rgba(120, 214, 162, 0.15);
+  }
+
+  50% {
+    box-shadow: 0 0 0 7px rgba(120, 214, 162, 0.06);
+  }
+}
+
+.welcome-brand > span,
+.welcome-nav__caregiver,
+.welcome-button,
+.welcome-button svg,
+.welcome-how__grid article,
+.welcome-how__grid article > svg,
+.welcome-number,
+.welcome-destination,
+.welcome-destination > span,
+.welcome-destination > svg,
+.brand__mark,
+.role-switcher button,
+.icon-button,
+.button,
+.button svg,
+.text-button,
+.text-button svg,
+.provider-status > summary,
+.provider-status > summary > svg,
+.history-row,
+.history-row__mark,
+.history-row__body,
+.skill-row,
+.demo-card,
+.demo-card__icon,
+.demo-card__go svg,
+.prompt-box,
+.recall-box,
+.prompt-box input,
+.prompt-box textarea,
+.recall-box input {
+  transition-duration: var(--motion-medium);
+  transition-timing-function: var(--ease-standard);
+}
+
+.welcome-brand > span,
+.welcome-how__grid article > svg,
+.welcome-number,
+.welcome-destination > span,
+.brand__mark,
+.demo-card__icon {
+  transition-property: transform, background-color, color;
+}
+
+.welcome-nav__caregiver,
+.welcome-button,
+.welcome-how__grid article,
+.welcome-destination,
+.icon-button,
+.button,
+.history-row,
+.skill-row,
+.demo-card,
+.prompt-box,
+.recall-box {
+  transition-property: transform, border-color, background-color, color, box-shadow;
+}
+
+.welcome-button svg,
+.welcome-destination > svg,
+.role-switcher button,
+.button svg,
+.text-button,
+.text-button svg,
+.provider-status > summary,
+.provider-status > summary > svg,
+.history-row__mark,
+.history-row__body,
+.demo-card__go svg,
+.prompt-box input,
+.prompt-box textarea,
+.recall-box input {
+  transition-property: transform, border-color, background-color, color, box-shadow, opacity;
+}
+
+.welcome-kicker,
+.welcome-hero__copy h1,
+.welcome-hero__copy > p,
+.welcome-actions,
+.welcome-trust,
+.welcome-preview {
+  animation: guided-rise var(--motion-slow) var(--ease-emphasized) both;
+}
+
+.welcome-kicker { animation-delay: 40ms; }
+.welcome-hero__copy h1 { animation-delay: 100ms; }
+.welcome-hero__copy > p { animation-delay: 160ms; }
+.welcome-actions { animation-delay: 220ms; }
+.welcome-trust { animation-delay: 280ms; }
+.welcome-preview { animation-delay: 150ms; }
+
+.welcome-preview__guide > svg {
+  animation: guide-pointer-settle 620ms var(--ease-emphasized) 520ms both;
+  transform-origin: center;
+}
+
+.welcome-preview__target {
+  animation: target-confirm 1.5s var(--ease-standard) 900ms 2;
+}
+
+.welcome-how__grid article,
+.welcome-destination {
+  animation: guided-rise 460ms var(--ease-emphasized) backwards;
+}
+
+.welcome-how__grid article:nth-child(1),
+.welcome-destination:nth-child(1) { animation-delay: 60ms; }
+
+.welcome-how__grid article:nth-child(2),
+.welcome-destination:nth-child(2) { animation-delay: 130ms; }
+
+.welcome-how__grid article:nth-child(3) { animation-delay: 200ms; }
+
+.agent-live-dot--ready {
+  animation: live-breathe 2.4s ease-in-out infinite;
+}
+
+.agent-dashboard__bar,
+.agent-dashboard__grid > * {
+  animation: guided-rise 420ms var(--ease-emphasized) backwards;
+}
+
+.agent-dashboard__grid > :nth-child(1) { animation-delay: 70ms; }
+.agent-dashboard__grid > :nth-child(2) { animation-delay: 130ms; }
+
+.prompt-box:focus-within,
+.recall-box:focus-within {
+  border-color: var(--forest);
+  box-shadow: 0 0 0 4px rgba(23, 104, 71, 0.1), var(--shadow-lift);
+  transform: translateY(-1px);
+}
+
+.prompt-box input:hover,
+.prompt-box textarea:hover,
+.recall-box input:hover {
+  border-color: var(--line-strong);
+}
+
+.welcome-nav__caregiver:active,
+.welcome-button:active,
+.welcome-destination:active,
+.icon-button:active:not(:disabled),
+.button:active:not(:disabled),
+.demo-card:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+  transition-duration: var(--motion-fast);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .welcome-brand:hover > span,
+  .brand:hover .brand__mark {
+    transform: translateY(-2px) rotate(-3deg) scale(1.04);
+  }
+
+  .welcome-nav__caregiver:hover,
+  .welcome-button:hover,
+  .welcome-destination:hover,
+  .icon-button:hover:not(:disabled),
+  .button:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lift);
+  }
+
+  .welcome-nav__caregiver:hover {
+    color: #0d4d34;
+    background: #f1f7f3;
+    border-color: #5f7f6e;
+  }
+
+  .welcome-button--primary:hover {
+    background: #0d4d34;
+    border-color: #0d4d34;
+    box-shadow: 0 16px 28px -18px rgba(13, 77, 52, 0.72);
+  }
+
+  .welcome-button--secondary:hover {
+    background: #f5f9f6;
+    border-color: #0d4d34;
+  }
+
+  .welcome-button:hover .lucide-arrow-right,
+  .welcome-destination:hover > .lucide-arrow-right,
+  .button:hover .lucide-arrow-right,
+  .text-button:hover .lucide-arrow-right,
+  .demo-card:hover .demo-card__go svg {
+    transform: translateX(4px);
+  }
+
+  .welcome-how__grid article:hover {
+    border-color: #aabeb1;
+    box-shadow: var(--shadow-lift);
+    transform: translateY(-4px);
+  }
+
+  .welcome-how__grid article:hover > svg,
+  .welcome-how__grid article:hover .welcome-number,
+  .welcome-destination:hover > span,
+  .demo-card:hover:not(:disabled) .demo-card__icon {
+    transform: translateY(-2px) scale(1.06);
+  }
+
+  .welcome-destination:hover {
+    border-color: #5f7f6e;
+    box-shadow: 0 18px 34px -24px rgba(19, 71, 48, 0.64);
+    transform: translateY(-3px);
+  }
+
+  .welcome-destination--person:hover {
+    background: #0d4d34;
+    border-color: #0d4d34;
+  }
+
+  .role-switcher button:hover:not(.active) {
+    color: var(--ink);
+    background: rgba(255, 255, 255, 0.58);
+  }
+
+  .text-button:hover {
+    color: var(--forest);
+    text-decoration-thickness: 2px;
+  }
+
+  .provider-status > summary:hover {
+    color: var(--forest-dark);
+  }
+
+  .provider-status > summary:hover > svg {
+    transform: translateY(1px);
+  }
+
+  .provider-status[open] > summary:hover > svg {
+    transform: rotate(180deg) translateY(1px);
+  }
+
+  .history-row:hover .history-row__mark {
+    background: var(--forest);
+    transform: scaleY(1.12);
+  }
+
+  .history-row:hover .history-row__body {
+    transform: translateX(3px);
+  }
+
+  .skill-row:hover {
+    background: #f5f8f6;
+  }
+
+  .demo-card:hover:not(:disabled) {
+    border-color: var(--forest);
+    box-shadow: 0 18px 36px -23px rgba(15, 60, 40, 0.58);
+    transform: translateY(-5px);
+  }
+}
+
+.demo-card {
+  animation-fill-mode: backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-kicker,
+  .welcome-hero__copy h1,
+  .welcome-hero__copy > p,
+  .welcome-actions,
+  .welcome-trust,
+  .welcome-preview,
+  .welcome-preview__guide > svg,
+  .welcome-preview__target,
+  .welcome-how__grid article,
+  .welcome-destination,
+  .agent-live-dot--ready,
+  .agent-dashboard__bar,
+  .agent-dashboard__grid > * {
+    animation: none !important;
+  }
+
+  .welcome-nav__caregiver:active,
+  .welcome-button:active,
+  .welcome-destination:active,
+  .icon-button:active:not(:disabled),
+  .button:active:not(:disabled),
+  .demo-card:active:not(:disabled),
+  .prompt-box:focus-within,
+  .recall-box:focus-within {
+    transform: none;
+  }
+
+  .welcome-brand:hover > span,
+  .brand:hover .brand__mark,
+  .welcome-nav__caregiver:hover,
+  .welcome-button:hover,
+  .welcome-button:hover .lucide-arrow-right,
+  .welcome-how__grid article:hover,
+  .welcome-how__grid article:hover > svg,
+  .welcome-how__grid article:hover .welcome-number,
+  .welcome-destination:hover,
+  .welcome-destination:hover > span,
+  .welcome-destination:hover > .lucide-arrow-right,
+  .icon-button:hover:not(:disabled),
+  .button:hover:not(:disabled),
+  .button:hover .lucide-arrow-right,
+  .text-button:hover .lucide-arrow-right,
+  .history-row:hover .history-row__mark,
+  .history-row:hover .history-row__body,
+  .demo-card:hover:not(:disabled),
+  .demo-card:hover:not(:disabled) .demo-card__icon,
+  .demo-card:hover .demo-card__go svg {
+    transform: none;
+  }
+}

@@ -1,13 +1,11 @@
-"""The curated demo tasks and the origin allowlist that bounds every autonomous run.
+"""The curated demo tasks offered as one-tap starting points.
 
-Three tasks are offered as one-tap demos because they are the recurring errands this
-product exists for: a government queue, a grocery order, and a standing appointment. Each
-one names a real site, so the run shown on stage is the run a participant would get.
+Three tasks are offered because they are the recurring errands this product exists for: a
+government queue, a grocery order, and a standing appointment. Each one names a real site,
+so the run shown on stage is the run a participant would get. Anything typed as a free
+prompt is equally supported.
 
-Anything typed as a free prompt is also allowed. The allowlist below is not a restriction
-on what may be asked; it is the set of origins an autonomous run may *start* on and stay
-within without a fresh confirmation, which is what keeps a mistyped prompt from wandering
-onto a checkout page nobody reviewed.
+There is no origin allowlist. A run goes wherever the task leads it.
 """
 
 from __future__ import annotations
@@ -25,20 +23,28 @@ DEMO_TASKS: Final[tuple[DemoTask, ...]] = (
             "Joins the California DMV virtual queue for a field office so there is no "
             "waiting room."
         ),
-        start_url="https://www.dmv.ca.gov/portal/appointments/",
-        prompt="Get in line at the nearest DMV office for a driver license renewal.",
+        # DMV's own appointment shell loads an invisible reCAPTCHA on every page and can
+        # divert managed browsers into its MyDMV login.  The site's reviewed "Get in Line"
+        # path hands the task to this official Qmatic Mobile Ticket application.  Starting
+        # at that legitimate destination avoids an inaccessible challenge rather than
+        # attempting to defeat it.
+        start_url="https://mt-cadmvoas.us.qmatic.cloud/branches",
+        prompt=(
+            "At the San Francisco DMV office, choose Office Visit and Driver Lic./ID Card, "
+            "then get in line for a senior driver's license renewal."
+        ),
         category="government",
     ),
     DemoTask(
-        id="whole-foods-groceries",
+        id="sprouts-groceries",
         name="Add groceries to the cart",
         description=(
-            "Fills an Amazon grocery cart (Whole Foods and Fresh) with the usual weekly "
+            "Fills an Instacart cart from the Sprouts storefront with the usual weekly "
             "staples, stopping before checkout."
         ),
-        start_url="https://www.amazon.com/fresh",
+        start_url="https://www.instacart.com/store/sprouts/",
         prompt=(
-            "Add milk, eggs, bananas, and bread to my Whole Foods cart. "
+            "Add milk, eggs, bananas, and bread to my Sprouts cart on Instacart. "
             "Stop before placing the order."
         ),
         category="shopping",
@@ -47,10 +53,20 @@ DEMO_TASKS: Final[tuple[DemoTask, ...]] = (
         id="haircut-appointment",
         name="Book a haircut",
         description=(
-            "Finds a nearby salon that takes online appointments and holds the next open slot."
+            "Opens the neighbourhood barbershop's booking page and holds the next open slot."
         ),
-        start_url="https://booksy.com/en-us/s/haircut",
-        prompt="Book a haircut at the closest salon at the earliest time this week.",
+        # Booksy's own search resolves a location only through a Google-Places
+        # autocomplete whose suggestions are drawn client-side; nothing in the URL sets
+        # one, so a run that starts there types the city over and over and never gets a
+        # result list.  Starting on the shop's public booking page -- the same page that
+        # search would have led to -- puts the run straight onto services and times.
+        start_url=(
+            "https://booksy.com/en-us/162167_the-shop-barbershop_barber-shop_134715_san-francisco"
+        ),
+        prompt=(
+            "Book a haircut at The Shop Barbershop in San Francisco at the earliest "
+            "available time this week."
+        ),
         category="appointment",
     ),
 )
@@ -72,36 +88,9 @@ def _expand(origin: str) -> set[str]:
     return {f"{parsed.scheme.lower()}://{bare}", f"{parsed.scheme.lower()}://www.{bare}"}
 
 
-# Origins reached in the normal course of the curated tasks: identity providers, store
-# subdomains, and booking hosts. A run that leaves this set pauses for confirmation.
-_ADDITIONAL_ORIGINS: Final = frozenset(
-    {
-        "https://www.dmv.ca.gov",
-        "https://qless.com",
-        "https://www.amazon.com",
-        "https://www.wholefoodsmarket.com",
-        "https://booksy.com",
-    }
-)
-
-DEMO_ORIGINS: Final[frozenset[str]] = frozenset(
-    origin
-    for task in DEMO_TASKS
-    for origin in _expand(origin_of(task.start_url))
-) | frozenset(
-    expanded for origin in _ADDITIONAL_ORIGINS for expanded in _expand(origin)
-)
-
-
 def demo_for_origin(url: str) -> DemoTask | None:
     origin = origin_of(url)
     for task in DEMO_TASKS:
         if origin in _expand(origin_of(task.start_url)):
             return task
     return None
-
-
-def is_allowlisted(url: str) -> bool:
-    """Return whether an autonomous run may continue on this origin unprompted."""
-
-    return origin_of(url) in DEMO_ORIGINS

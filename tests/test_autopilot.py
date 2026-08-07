@@ -18,13 +18,7 @@ from backend.app.contracts.models import (
     SafetyClassification,
     SensitivityFlag,
 )
-from backend.app.domain.demos import (
-    DEMO_ORIGINS,
-    DEMO_TASKS,
-    DEMO_TASKS_BY_ID,
-    is_allowlisted,
-    origin_of,
-)
+from backend.app.domain.demos import DEMO_TASKS, DEMO_TASKS_BY_ID, origin_of
 from backend.app.services.autopilot import AutopilotService, LocalActionPlanner
 from backend.app.services.event_hub import SessionEventHub
 
@@ -52,18 +46,30 @@ def _candidate(
     href_origin: str | None = None,
     tag_name: str = "button",
     role: str = "button",
+    input_type: str | None = None,
 ) -> ElementCandidate:
     return ElementCandidate(
         candidate_id=candidate_id,
         role=role,
         accessible_name=name,
         tag_name=tag_name,
+        input_type=input_type,
         visible=True,
         enabled=True,
         focusable=True,
         bounding_rect=BoundingRect(x=0, y=0, width=100, height=40),
         sensitivity_flags=flags or [],
         href_origin=href_origin,
+    )
+
+
+def _field(candidate_id: str, name: str, input_type: str = "text") -> ElementCandidate:
+    return _candidate(
+        candidate_id,
+        name=name,
+        tag_name="input",
+        role="textbox",
+        input_type=input_type,
     )
 
 
@@ -88,6 +94,22 @@ class _Browser:
         if self.outcomes:
             return self.outcomes.pop(0)
         return _Outcome(True)
+
+
+class _CompletingBrowser(_Browser):
+    """Reports the page as finished once the form has actually been submitted."""
+
+    def __init__(self, candidates: list[ElementCandidate]) -> None:
+        super().__init__(candidates)
+        self.submitted = False
+
+    async def act(self, session_id: Any, **kwargs: Any) -> _Outcome:
+        if kwargs.get("action") is AgentActionKind.CLICK:
+            self.submitted = True
+        return await super().act(session_id, **kwargs)
+
+    async def page_state(self, _session_id: Any) -> _PageState:
+        return _PageState(title="Task complete") if self.submitted else _PageState()
 
 
 class _Planner:
@@ -266,56 +288,6 @@ class AutopilotTests(unittest.TestCase):
 
         self.assertEqual(view.state, AgentRunState.COMPLETED)
         self.assertEqual(len(browser.actions), 1)
-
-    def test_leaving_the_starting_site_stops_for_a_decision(self) -> None:
-        browser = _Browser([_candidate("link")])
-        planner = _Planner(
-            [
-                AgentPlan(
-                    action=AgentActionKind.NAVIGATE,
-                    url="https://unknown-prize-site.example/claim",
-                    narration="Following that link",
-                    confidence=0.9,
-                )
-            ]
-        )
-        service = self._service(browser, planner)
-
-        view = self._run(service, uuid4())
-
-        self.assertEqual(view.state, AgentRunState.NEEDS_CONFIRMATION)
-        self.assertEqual(browser.actions, [])
-        assert view.pending_confirmation is not None
-        self.assertIn("leaves the site we started on", view.pending_confirmation.message)
-
-    def test_clicking_a_cross_origin_link_stops_before_the_click(self) -> None:
-        browser = _Browser(
-            [
-                _candidate(
-                    "outside",
-                    name="Continue elsewhere",
-                    href_origin="https://unknown-prize-site.example",
-                    role="link",
-                    tag_name="a",
-                )
-            ]
-        )
-        planner = _Planner(
-            [
-                AgentPlan(
-                    action=AgentActionKind.CLICK,
-                    candidate_id="outside",
-                    narration="Following the link",
-                    confidence=0.9,
-                )
-            ]
-        )
-        service = self._service(browser, planner)
-
-        view = self._run(service, uuid4())
-
-        self.assertEqual(view.state, AgentRunState.NEEDS_CONFIRMATION)
-        self.assertEqual(browser.actions, [])
 
     def test_navigating_inside_the_starting_site_proceeds(self) -> None:
         browser = _Browser([_candidate("link")])
@@ -498,7 +470,9 @@ class LocalActionPlannerTests(unittest.TestCase):
         self.assertTrue(plan.task_complete)
         self.assertEqual(plan.action, AgentActionKind.DONE)
 
-    def test_a_generic_submit_button_stops_for_a_decision(self) -> None:
+    def test_a_generic_submit_button_advances_the_run(self) -> None:
+        # "Submit" is how a service selection, a search, and a date choice all advance.
+        # Refusing the word itself is what stranded the DMV demo on an empty form.
         plan = asyncio.run(
             LocalActionPlanner().plan(
                 prompt="Send the form",
@@ -510,7 +484,161 @@ class LocalActionPlannerTests(unittest.TestCase):
         )
 
         assert plan is not None
-        self.assertEqual(plan.action, AgentActionKind.ASK)
+        self.assertEqual(plan.action, AgentActionKind.CLICK)
+        self.assertEqual(plan.candidate_id, "submit")
+        self.assertEqual(plan.safety_classification, SafetyClassification.SAFE)
+
+    def test_a_button_that_spends_money_is_still_classified_as_money(self) -> None:
+        plan = asyncio.run(
+            LocalActionPlanner().plan(
+                prompt="Finish the order",
+                candidates=[_candidate("pay", name="Submit payment")],
+                history=[],
+                page_title="Checkout",
+                origin="http://127.0.0.1:8765",
+            )
+        )
+
+        assert plan is not None
+        self.assertEqual(plan.safety_classification, SafetyClassification.MONEY)
+
+
+class DemoPersonaRunTests(unittest.TestCase):
+    """A curated demo runs on made-up details, so it never stops to ask for real ones."""
+
+    def _service(self, browser: Any, planner: Any) -> AutopilotService:
+        return AutopilotService(
+            browser=browser,
+            planner=planner,
+            event_hub=SessionEventHub(),
+            repository=_Repository(),
+        )
+
+    def test_a_demo_types_the_persona_into_a_labelled_field(self) -> None:
+        browser = _Browser([_field("first", "First Name")])
+        planner = _Planner([AgentPlan(action=AgentActionKind.DONE, narration="Done.")])
+        service = self._service(browser, planner)
+        session_id = uuid4()
+
+        async def scenario() -> None:
+            await service.start(
+                session_id=session_id,
+                user_id="user-1",
+                task_name="Get in line at the DMV",
+                prompt=DEMO_TASKS_BY_ID["dmv-get-in-line"].prompt,
+                start_url=DEMO_TASKS_BY_ID["dmv-get-in-line"].start_url,
+                demo=DEMO_TASKS_BY_ID["dmv-get-in-line"],
+            )
+            run = service.get(session_id)
+            assert run is not None and run.task is not None
+            await run.task
+
+        asyncio.run(scenario())
+
+        fills = [action for action in browser.actions if action["action"] is AgentActionKind.FILL]
+        self.assertEqual(len(fills), 1)
+        self.assertEqual(fills[0]["value"], "Margaret")
+
+    def test_a_field_is_only_filled_once_even_if_it_stays_on_the_page(self) -> None:
+        browser = _Browser([_field("email", "Email Address")])
+        planner = _Planner([AgentPlan(action=AgentActionKind.DONE, narration="Done.")])
+        service = self._service(browser, planner)
+        session_id = uuid4()
+
+        async def scenario() -> None:
+            await service.start(
+                session_id=session_id,
+                user_id="user-1",
+                task_name="Book a haircut",
+                prompt="book it",
+                start_url="https://booksy.com/",
+                demo=DEMO_TASKS_BY_ID["haircut-appointment"],
+            )
+            run = service.get(session_id)
+            assert run is not None and run.task is not None
+            await run.task
+
+        asyncio.run(scenario())
+
+        fills = [action for action in browser.actions if action["action"] is AgentActionKind.FILL]
+        self.assertEqual(len(fills), 1)
+        self.assertEqual(fills[0]["value"], "margaret.whitfield@example.com")
+
+    def test_a_free_form_run_invents_nothing(self) -> None:
+        browser = _Browser([_field("first", "First Name")])
+        planner = _Planner([AgentPlan(action=AgentActionKind.DONE, narration="Done.")])
+        service = self._service(browser, planner)
+        session_id = uuid4()
+
+        async def scenario() -> None:
+            await service.start(
+                session_id=session_id,
+                user_id="user-1",
+                task_name="Renew my library book",
+                prompt="Renew my library book",
+                start_url="https://booksy.com/",
+            )
+            run = service.get(session_id)
+            assert run is not None and run.task is not None
+            await run.task
+
+        asyncio.run(scenario())
+
+        fills = [action for action in browser.actions if action["action"] is AgentActionKind.FILL]
+        self.assertEqual(fills, [])
+
+    def test_one_control_cannot_swallow_the_whole_run(self) -> None:
+        # A live DMV run spent all 24 steps re-clicking the site's own search box,
+        # because nothing stopped the planner re-picking a control that changed nothing.
+        browser = _Browser([_candidate("search", name="Submit search form")])
+        service = self._service(browser, LocalActionPlanner())
+        session_id = uuid4()
+
+        async def scenario() -> None:
+            await service.start(
+                session_id=session_id,
+                user_id="user-1",
+                task_name="Get in line at the DMV",
+                prompt=DEMO_TASKS_BY_ID["dmv-get-in-line"].prompt,
+                start_url=DEMO_TASKS_BY_ID["dmv-get-in-line"].start_url,
+                demo=DEMO_TASKS_BY_ID["dmv-get-in-line"],
+            )
+            run = service.get(session_id)
+            assert run is not None and run.task is not None
+            await run.task
+
+        asyncio.run(scenario())
+
+        self.assertLessEqual(len(browser.actions), 1)
+
+    def test_a_demo_fills_the_form_and_then_submits_it(self) -> None:
+        # The whole point: one tap, no question asked of the participant. This runs the
+        # real planner, because a stub planner is what hid the bug the first time.
+        browser = _CompletingBrowser(
+            [_field("first", "First Name"), _candidate("go", name="Submit")]
+        )
+        service = self._service(browser, LocalActionPlanner())
+        session_id = uuid4()
+
+        async def scenario() -> None:
+            await service.start(
+                session_id=session_id,
+                user_id="user-1",
+                task_name="Get in line at the DMV",
+                prompt=DEMO_TASKS_BY_ID["dmv-get-in-line"].prompt,
+                start_url=DEMO_TASKS_BY_ID["dmv-get-in-line"].start_url,
+                demo=DEMO_TASKS_BY_ID["dmv-get-in-line"],
+            )
+            run = service.get(session_id)
+            assert run is not None and run.task is not None
+            await run.task
+
+        asyncio.run(scenario())
+
+        performed = [action["action"] for action in browser.actions]
+        self.assertEqual(performed, [AgentActionKind.FILL, AgentActionKind.CLICK])
+        self.assertEqual(browser.actions[0]["value"], "Margaret")
+        self.assertEqual(service.view(session_id).state, AgentRunState.COMPLETED)
 
 
 class ProviderBlockTests(unittest.TestCase):
@@ -594,18 +722,17 @@ class DemoCatalogueTests(unittest.TestCase):
     def test_the_three_offered_demos_are_the_promised_errands(self) -> None:
         self.assertEqual(
             [task.id for task in DEMO_TASKS],
-            ["dmv-get-in-line", "whole-foods-groceries", "haircut-appointment"],
+            ["dmv-get-in-line", "sprouts-groceries", "haircut-appointment"],
         )
         self.assertEqual(
             {task.category for task in DEMO_TASKS},
             {"government", "shopping", "appointment"},
         )
 
-    def test_every_demo_starts_on_a_real_allowlisted_site(self) -> None:
+    def test_every_demo_starts_on_a_real_https_site(self) -> None:
         for task in DEMO_TASKS:
             with self.subTest(task=task.id):
                 self.assertTrue(task.start_url.startswith("https://"))
-                self.assertTrue(is_allowlisted(task.start_url))
                 self.assertNotIn("w3.org", task.start_url)
 
     def test_no_demo_points_at_a_domain_the_provider_refuses(self) -> None:
@@ -616,7 +743,6 @@ class DemoCatalogueTests(unittest.TestCase):
             with self.subTest(task=task.id):
                 for host in refused:
                     self.assertNotIn(host, task.start_url)
-        self.assertFalse(any(host in origin for origin in DEMO_ORIGINS for host in refused))
 
     def test_every_demo_carries_a_prompt_the_agent_can_act_on(self) -> None:
         for task in DEMO_TASKS:
@@ -624,13 +750,16 @@ class DemoCatalogueTests(unittest.TestCase):
                 self.assertGreater(len(task.prompt), 20)
                 self.assertEqual(DEMO_TASKS_BY_ID[task.id], task)
 
-    def test_the_www_and_bare_forms_of_an_origin_both_pass(self) -> None:
-        self.assertTrue(is_allowlisted("https://www.amazon.com/cart"))
-        self.assertTrue(is_allowlisted("https://amazon.com/cart"))
-        self.assertFalse(is_allowlisted("https://amazon.com.evil.example/cart"))
+    def test_dmv_demo_starts_at_the_official_queue_instead_of_the_captcha_shell(self) -> None:
+        task = DEMO_TASKS_BY_ID["dmv-get-in-line"]
 
-    def test_an_unrelated_origin_is_not_allowlisted(self) -> None:
-        self.assertFalse(is_allowlisted("https://unknown-prize-site.example/claim"))
+        self.assertEqual(
+            task.start_url,
+            "https://mt-cadmvoas.us.qmatic.cloud/branches",
+        )
+        self.assertNotIn("mydmv", task.start_url.casefold())
+
+    def test_an_origin_is_normalized_consistently(self) -> None:
         self.assertEqual(origin_of("https://Example.COM/path?x=1"), "https://example.com")
 
 

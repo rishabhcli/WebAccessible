@@ -94,6 +94,37 @@ async def _title(page: Page) -> str | None:
     return value.strip()[:180] or None
 
 
+_SUGGESTION_SELECTOR = (
+    "[role='option']:visible, [role='listbox'] li:visible, "
+    ".pac-item:visible, [class*='autocomplete'] li:visible"
+)
+
+
+async def _fill_like_a_person(page: Page, selector: str, value: str, timeout_ms: int) -> None:
+    """Type into a field with real key events, then commit any suggestion it opened.
+
+    `page.fill` assigns the value in one shot. A location or address box is usually an
+    autocomplete that only opens its suggestion list on keystrokes and only records a
+    place when one of those suggestions is chosen -- so a one-shot fill leaves the field
+    reading correctly while the site still holds no location. That is the shape of the
+    stall this replaces: the run typed "San Francisco, CA" into Booksy, the search stayed
+    empty, and it typed it again on every remaining step.
+    """
+
+    field = page.locator(selector).first
+    await field.click(timeout=timeout_ms)
+    await field.fill("", timeout=timeout_ms)
+    await field.press_sequentially(value, delay=30, timeout=timeout_ms)
+    try:
+        suggestion = page.locator(_SUGGESTION_SELECTOR).first
+        await suggestion.wait_for(state="visible", timeout=2_000)
+    except Exception:
+        # A plain text field opens nothing. The typed value already stands.
+        return
+    await field.press("ArrowDown", timeout=timeout_ms)
+    await field.press("Enter", timeout=timeout_ms)
+
+
 def _is_navigation_race(error: Exception) -> bool:
     """Whether a Playwright failure was caused by the page navigating underneath us."""
 
@@ -341,7 +372,7 @@ class BrowserController:
                 await page.click(selector, timeout=timeout_ms)
             elif action is AgentActionKind.FILL:
                 assert selector is not None
-                await page.fill(selector, value or "", timeout=timeout_ms)
+                await _fill_like_a_person(page, selector, value or "", timeout_ms)
             elif action is AgentActionKind.SELECT:
                 assert selector is not None
                 await page.select_option(selector, value or "", timeout=timeout_ms)

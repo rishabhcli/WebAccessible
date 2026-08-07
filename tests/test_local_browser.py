@@ -25,8 +25,11 @@ class _NavigationHandler(BaseHTTPRequestHandler):
         "/complete": """<!doctype html><html><head><title>Task complete</title></head>
         <body><main><h1>Task complete</h1><p>Navigation worked.</p></main></body></html>""",
     }
+    #: Every ``User-Agent`` this server was asked with, newest last.
+    seen_user_agents: ClassVar[list[str]] = []
 
     def do_GET(self) -> None:  # noqa: N802
+        self.seen_user_agents.append(self.headers.get("User-Agent", ""))
         body = self.pages.get(self.path)
         if body is None:
             self.send_error(404)
@@ -71,7 +74,10 @@ class LocalBrowserIntegrationTests(unittest.TestCase):
                 user_id="local-user",
                 start_url=start_url,
             )
-            self.assertIn("/v1/local-browser/local-", view.live_view_url or "")
+            self.assertRegex(
+                view.live_view_url or "",
+                r"^/v1/local-browser/local-[0-9a-f-]+/view$",
+            )
             candidates = await controller.snapshot(session_id)
             target = next(
                 item for item in candidates if item.accessible_name == "Continue to finish"
@@ -98,6 +104,57 @@ class LocalBrowserIntegrationTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             thread.join(timeout=2)
+
+    def test_local_chromium_never_asks_a_site_as_a_headless_browser(self) -> None:
+        """A run must not announce itself as ``HeadlessChrome``.
+
+        The California DMV queue this product opens sits behind a load balancer that
+        answers 403 to any request whose ``User-Agent`` carries that token, and a 403
+        page has nothing on it to plan against, so the run died on its first step.
+        """
+
+        _NavigationHandler.seen_user_agents.clear()
+        server = ThreadingHTTPServer(("127.0.0.1", 0), _NavigationHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        temporary_directory = tempfile.TemporaryDirectory()
+        repository = OperationalRepository(
+            str(Path(temporary_directory.name) / "operations.sqlite3")
+        )
+        settings = Settings(
+            _env_file=None,
+            app_env=RuntimeMode.DEVELOPMENT,
+            browser_execution_provider="local",
+            action_planner_provider="local",
+            api_public_url="http://localhost:8000",
+        )
+        controller = BrowserController(
+            adapter=LocalBrowserAdapter(settings),
+            repository=repository,
+        )
+        session_id = uuid4()
+
+        async def scenario() -> None:
+            await controller.start(
+                web_session_id=session_id,
+                user_id="local-user",
+                start_url=f"http://127.0.0.1:{server.server_port}/start",
+            )
+            await controller.stop(session_id, "test_complete")
+
+        try:
+            asyncio.run(scenario())
+        finally:
+            repository.close()
+            temporary_directory.cleanup()
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+        self.assertTrue(_NavigationHandler.seen_user_agents, "the page was never requested")
+        for user_agent in _NavigationHandler.seen_user_agents:
+            self.assertNotIn("Headless", user_agent)
+            self.assertIn("Chrome/", user_agent)
 
     def test_provider_navigation_block_pages_are_recognized(self) -> None:
         self.assertTrue(

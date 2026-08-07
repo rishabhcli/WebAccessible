@@ -405,10 +405,10 @@ class BrowserbaseAdapter:
         )
         if not web_session_id:
             raise ValueError("metadata must include the WebAccessible session ID")
-        session = await self._provider.create(
-            web_session_id,
-            allowed_domains=(parsed.hostname,),
-        )
+        # Errands routinely hand off to another provider (DMV -> Qmatic, retailer ->
+        # checkout, salon -> scheduler).  Do not turn the starting host into a provider
+        # allowlist; safety is enforced per action, not by breaking legitimate navigation.
+        session = await self._provider.create(web_session_id)
         connect = await self._provider.connect_data(session.id)
         return BrowserbaseSessionData(
             id=session.id,

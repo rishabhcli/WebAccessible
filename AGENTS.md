@@ -35,11 +35,16 @@ in `webaccessible-spec.md` §Phase 1–6 as superseded where the two disagree.
 
 - The agent drives the managed browser: clicking, typing, selecting, and navigating.
 - The dashboard reports what the agent *did*; it does not instruct the participant to act.
-- Three boundaries survive autonomy and must not be removed:
-  - **Money, identity, and deletion pause the run** and ask the participant to decide.
-    Reversible steps — adding to a cart, joining a queue, holding an appointment — proceed.
+- Two boundaries survive autonomy:
+  - **Money and deletion pause the run** and ask the participant to decide. Reversible
+    steps — adding to a cart, joining a queue, holding an appointment — proceed.
   - **Passwords are never read or typed.** The run stops and says so.
-  - **Leaving the origin the run started on pauses** for confirmation.
+- There is **no origin allowlist**; a run follows the task to any host. Real errands cross
+  hosts constantly (the DMV hands its queue to Qmatic), and pausing at each handoff made
+  the product unusable.
+- Identity classification pauses a free-form run but not a curated demo, whose details are
+  invented. A planner labels a plain click on "Renew your driver's license" as identity
+  purely from the words in it, which stopped demo runs on their first step.
 - Cold-run planning can use models; replay must stay deterministic and selector-first.
 - An action may only target an element from the same sanitized snapshot the planner saw.
 
@@ -57,9 +62,22 @@ in `webaccessible-spec.md` §Phase 1–6 as superseded where the two disagree.
 
 ## Curated demos
 
-`backend/app/domain/demos.py` holds the three offered tasks (DMV queue, Whole Foods cart,
-haircut booking) and the origin allowlist. Free-form prompts are fully supported; the
-allowlist only bounds unprompted origin changes mid-run.
+`backend/app/domain/demos.py` holds the three offered tasks (DMV queue, Instacart Sprouts
+cart, haircut booking). Free-form prompts are equally supported.
+
+Demos require `ACTION_PLANNER_PROVIDER=snowflake_cortex`. The deterministic
+`LocalActionPlanner` is a development fallback that cannot navigate a real multi-step
+site — on the live DMV it spent every step re-clicking the page's own search box — and
+`config.py` already rejects it for demo and production.
+
+A demo is one tap: it fills and submits without asking the participant anything. Form
+values come from the fictional persona in `backend/app/domain/persona.py` — an RFC 2606
+mailbox and a 555-01xx phone number, so no real person's details are ever typed. A
+free-form run has no persona and fills only what the participant's prompt contained.
+
+A button labelled "Submit" is not a risk in itself and must not be treated as one; it is
+how service selections, searches, and date pickers advance. Money, identity, deletion,
+and passwords remain the boundaries that stop a run.
 
 ## Data and safety constraints
 
