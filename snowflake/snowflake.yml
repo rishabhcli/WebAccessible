@@ -1,0 +1,18 @@
+definition_version: 2
+
+entities:
+  webaccessible_caregiver:
+    type: streamlit
+    identifier:
+      name: WEBACCESSIBLE_CAREGIVER
+      database: WEBACCESSIBLE
+      schema: APP
+    title: WebAccessible Caregiver
+    comment: Read-only caregiver reporting over verified WebAccessible product data.
+    query_warehouse: WEBACCESSIBLE_WH
+    main_file: streamlit/streamlit_app.py
+    stage: WEBACCESSIBLE_STREAMLIT_STAGE
+    artifacts:
+      - streamlit/streamlit_app.py
+      - streamlit/environment.yml
+      - streamlit/.streamlit/config.toml

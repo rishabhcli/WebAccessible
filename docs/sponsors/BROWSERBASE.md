@@ -23,7 +23,20 @@ Browserbase autonomous Agent capabilities are prohibited. A goal-based agent cou
 2. Create one Browserbase session per active task and persist its Browserbase session ID with the WebAccessible session.
 3. Attach through CDP and expose Live View while streaming only the minimal sanitized page/interaction signals needed by the stuck detector and replay engine.
 4. Explicitly terminate the Browserbase session on completion, escalation, abandonment, or backend failure.
-5. Store the Browserbase session ID, start/stop timestamps, and terminal state in Snowflake telemetry. Never store Browserbase keys in Snowflake.
+5. On backend startup, list only `PENDING` and `RUNNING` sessions, require the exact WebAccessible metadata marker for the current environment, and terminate those orphaned sessions before telemetry starts. Unmarked sessions and sessions from another environment are never touched.
+6. Store the Browserbase session ID, start/stop timestamps, and terminal state in Snowflake telemetry. Never store Browserbase keys in Snowflake.
+
+## Sanitized live provider qualification
+
+On 2026-08-07, the implemented adapter and controller completed one live provider-only qualification against the exact W3C sandwich checkbox target. The retained session reference is the first 12 characters of its SHA-256 digest, `e05ede2a19f4`; the raw session ID and Live View URL are intentionally omitted.
+
+- Managed-session create plus CDP attachment completed in 4.49 seconds.
+- Browserbase returned an HTTPS Live View, and the controller observed the configured W3C origin and normalized target path.
+- The observation-only snapshot completed in 70 ms and returned 49 visible candidates: 44 links, 4 checkboxes, and 1 candidate without an explicit role. No sensitive candidates were reported.
+- Explicit controller termination completed in 153 ms. Browserbase returned `COMPLETED` with an end timestamp, and a separate provider list readback confirmed the terminal session.
+- Session metadata recorded `agentSurfaceUsed=false`. No Browserbase Agent operation, click, typing, form fill, submit, or other target-page action was performed.
+
+This proves the isolated create -> CDP -> Live View -> observe -> terminate provider lifecycle. It does not replace the required cold and warm demo runs or prove a trusted participant-input trail.
 
 ## Evidence required before a cloud-execution claim
 
@@ -34,7 +47,7 @@ Browserbase autonomous Agent capabilities are prohibited. A goal-based agent cou
 
 ## Provider limits and failure boundary
 
-The verified Browserbase account is on the Free plan. Its provider-enforced session and browser-hour limits are a hard blocked state when reached; WebAccessible must surface that state and must not fall back to local browser automation. Existing dashboard sessions prove the account has reached the managed cloud path, but no WebAccessible Browserbase session has been claimed yet.
+The verified Browserbase account is on the Free plan. Its provider-enforced session and browser-hour limits are a hard blocked state when reached; WebAccessible must surface that state and must not fall back to local browser automation. The sanitized provider qualification above proves the WebAccessible managed-session lifecycle, while the full cold/warm participant demo path remains a separate evidence gate.
 
 ## Source traceability
 

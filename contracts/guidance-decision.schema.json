@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webaccessible.app/contracts/guidance-decision.schema.json",
+  "title": "Grounded One-Step Guidance Decision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["instruction", "target_candidate_id", "expected_transition", "confidence", "safety_classification", "rationale_code"],
+  "properties": {
+    "instruction": {"type": "string", "minLength": 1, "maxLength": 240, "pattern": "^[^\\r\\n]+$"},
+    "target_candidate_id": {"type": "string", "minLength": 1, "maxLength": 96},
+    "expected_transition": {"type": "object"},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "safety_classification": {"enum": ["safe", "money", "identity", "deletion", "suspicious", "unknown"]},
+    "amount": {"type": ["object", "null"]},
+    "rationale_code": {"enum": ["task_match", "next_control", "route_recovery", "selector_repair", "safe_stop", "insufficient_context"]}
+  }
+}

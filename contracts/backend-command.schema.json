@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webaccessible.app/contracts/backend-command.schema.json",
+  "title": "WebAccessible Backend Command",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["command_id", "session_id", "server_state_version", "command_type"],
+  "properties": {
+    "command_id": {"type": "string", "format": "uuid"},
+    "session_id": {"type": "string", "format": "uuid"},
+    "server_state_version": {"type": "integer", "minimum": 0},
+    "command_type": {"enum": ["none", "offer_help", "present_guidance", "verifying", "safety_pause", "escalated", "completed", "prepared", "provider_unavailable"]},
+    "page_instance_id": {"type": ["string", "null"], "format": "uuid"},
+    "instruction": {"type": ["string", "null"], "maxLength": 240},
+    "target": {"type": ["object", "null"]},
+    "expected_transition": {"type": ["object", "null"]},
+    "safety": {"type": ["object", "null"]}
+  }
+}

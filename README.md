@@ -1,94 +1,287 @@
 # WebAccessible
 
-WebAccessible is a caregiver-paid browser guidance service for older adults who need help staying on-task online without handing over control of every click. It watches for “stuck” moments, gives short one-step guidance, and replays previously recorded routines with a low-cost, high-confidence replay loop.
+WebAccessible is a caregiver-supported browser guidance application for older adults. It
+detects observable stuck moments, presents one short next step, highlights the relevant
+control, and waits for the participant to perform the real action. Verified teach runs are
+stored as readable EverOS skills and later replayed selector-first without a model call when
+the saved route still matches.
 
-The goal is not to act for the user. The user remains in control and clicks the real page controls herself.
+The application code is now present across the React UI, FastAPI service, Browserbase bridge,
+EverOS memory adapter, Snowflake telemetry and Cortex adapters, Snowflake migrations, and
+Streamlit reporting app. That implementation status is not a claim that the current revision
+has been deployed or that a full live cold/warm qualification run has passed. See
+[`docs/SETUP_STATUS.md`](docs/SETUP_STATUS.md) for the evidence boundary.
 
-## Track 2 Service
+## Product Boundaries
 
-WebAccessible is a defined B2C caregiver service: Susan pays **$15/month per supported adult** for a private routine library, calm one-step recovery, deterministic replay, completion history, and caregiver escalation. That is $180 ARR per active family, well above Track 2's $10 ARR-per-user threshold.
+- The participant performs every target-page click, keystroke, and submit in Browserbase
+  interactive Live View.
+- The backend may observe sanitized page state, highlight a target, and verify the resulting
+  state. It exposes no autonomous Browserbase Agent path.
+- Money movement, identity submission, and deletion pause before the irreversible action.
+- Replay is deterministic and selector-first. A matching verified replay step creates no
+  guidance-model call.
+- Passwords are neither requested nor stored.
+- Demo and production modes do not fall back to local provider fixtures.
 
-The first paid-pilot proof is one Susan-like caregiver with a live subscription or prepaid monthly pilot, one completed cold run, one warm replay, and a confirmed reduction in assistance calls. Until that happens, the project must describe the pricing as a clear purchase path, not as existing revenue.
+## Architecture
 
-## Why this exists
+```text
+React participant and caregiver UI
+                |
+                v
+FastAPI API, session state, SSE, and transient SQLite outbox
+      |                    |                    |
+      v                    v                    v
+Browserbase          EverOS memory       Snowflake + Cortex
+Session + CDP        Case/Skill/Episode  telemetry/cost/guidance
+      |
+      v
+Interactive Live View controlled by the participant
 
-Older adults can understand recurring workflows but often get confused at exactly the same points. WebAccessible:
-
-- Detects stalled behavior from interaction signals.
-- Gives calm, one-line guidance instead of large autonomous actions.
-- Learns repeatable routines into reusable skills.
-- Distinguishes “cold runs” from replayed routines so cost and behavior are predictable.
-- Escalates uncertainty or money-sensitive moments to a caregiver contact.
-
-## Core behavior
-
-- Ambient help is triggered by inactivity patterns, repeated visits, unproductive scrolling, and explicit help requests.
-- Guidance is one step at a time:
-  1. Surface clear instruction text.
-  2. Highlight the target control.
-  3. Let the user click.
-  4. Verify page change and move to the next step.
-- Irreversible actions (payments, sensitive identity entry, deletes) always require explicit user confirmation.
-- Skills repair themselves on minor UI drift via a focused single-step selector strategy.
-- Scam-style cues (phishing, fake urgency, unfamiliar identity-data pages) generate a pause-and-escalate intervention.
-
-## Current architecture
-
-```
-WebAccessible remote session UI
-        │
-        ▼
-Browserbase managed Chrome (Browser Session + interactive Live View)
-        │  cloud CDP session only; never an autonomous Browserbase Agent run
-        ▼
-Python backend (FastAPI)
-├─ stuck detector     (rules, no model)
-├─ guidance engine    (fast model, cold runs)
-├─ replay engine      (selector match + verify, no model)
-├─ EverOS client      (search/add/flush/get/upload)
-└─ Snowflake writer   (SESSION_STEPS telemetry)
-        │
-        ▼
-Streamlit in Snowflake — caregiver view, cost curve, weekly summaries
+Snowflake product tables and evidence views
+                |
+                v
+Streamlit in Snowflake caregiver evidence app
 ```
 
-All browsing occurs in a Browserbase managed browser session. The backend may observe, navigate, highlight, and verify through CDP, while Browserbase Live View gives Margaret the remote browser she controls. It must never use autonomous Browserbase Agent actions or click/submit for Margaret.
+Local development runs the UI and API processes locally. Browser execution still occurs in a
+live Browserbase managed session; guidance uses live Snowflake Cortex; durable routine and
+completion memory uses live EverOS; telemetry and cost evidence sync to live Snowflake. The
+SQLite file is only short-lived operational state and an outbox, not the sponsor evidence or
+memory layer.
 
-## Data model highlights
+## Implemented Capabilities
 
-- `SESSION_STEPS` logs each step, outcome, latency, and token/cost metrics.
-- EverOS stores:
-  - `profile` for user preferences + capability notes
-  - `agent_case` raw route recording
-  - `agent_skill` reusable distilled route
-  - `episode` completion memory
-- Cost tracking is measured from observed token usage, with Snowflake usage tables treated as secondary verification.
+**Participant UI**
 
-## Planned build flow
+- Accessible setup for reading size, voice, and caregiver contact preference.
+- Routine chooser backed by EverOS plus a reviewed W3C starter task.
+- Embedded Browserbase Live View with one-step guidance, target highlighting, help, dismiss,
+  voice output, retry, and stop controls.
+- Live session state over authenticated server-sent events.
+- Explicit completed, prepared, safety-paused, escalated, failed, and provider-unavailable
+  states.
 
-1. Verify the existing Browserbase, EverOS, and Snowflake setup and close each remaining live gate.
-2. Browserbase session bridge plus remote Live View, guidance panel, halo, and click observation.
-3. Record a first run → Case → Skill.
-4. Replay engine with selector matching and verification.
-5. Session logging and cost reporting.
-6. Minimal Streamlit proof view for the real cold-versus-warm cost curve.
-7. Optional product depth: caregiver dashboard, voice, scam shield, and SMS escalation.
+**Caregiver UI**
 
-## Repository status
+- Authenticated session history and selected-session detail.
+- Snowflake-backed cost-by-run display with explicit empty and unavailable states.
+- EverOS routine list and readable skill viewer.
+- Persisted escalation notes returned to the active participant session.
 
-This repository currently tracks the canonical spec and docs:
+**Backend and cloud data**
 
-- `webaccessible-spec.md`: full product specification
-- `IMPLEMENTATION_PLAN.md`: execution-ready architecture, work packages, contracts, gates, and test plan
-- `README.md`: this document
-- `AGENTS.md`: contributor operating instructions
-- `SPONSORS.md`: sponsor utilization documentation
-- `docs/sponsors/`: live implementation and evidence contracts for each sponsor
-- `docs/SETUP_STATUS.md`: dated provider configuration and readiness boundaries
+- Signed participant/caregiver sessions and scoped API access.
+- Browserbase create, Live View, server-side CDP attach, sanitized observation, highlight,
+  deterministic verification, and explicit termination.
+- Rules-based stuck detection, bounded Snowflake Cortex cold/repair guidance, verified route
+  recording, selector-first replay, and single-step repair.
+- EverOS profile, routine search/read, teach `add`/`flush`, skill retrieval, and episode lookup.
+- SQLite operational event ledger plus retrying Snowflake outbox.
+- Idempotent Snowflake `MERGE` writers, actual-usage cost calculator, effective-dated rate
+  cards, reconciliation views, evidence queries, and a read-only Streamlit application.
 
-## References
+The HTTP surface is documented at `/docs` while the API is running. Core endpoints include
+`/health`, `/ready`, participant sessions, task/session lifecycle, Browserbase Live View,
+event batches, help/dismiss, SSE, routines, skills, episode answers, escalations, and the
+caregiver dashboard.
 
-- `webaccessible-spec.md` — authoritatively defines behavior, constraints, risks, and demo plan.
-- `IMPLEMENTATION_PLAN.md` — defines implementation decisions, sequencing, acceptance gates, and traceability.
-- `SPONSORS.md` — outlines how Snowflake, EverOS, and Beta Fund are utilized in implementation and proof.
-- `docs/sponsors/BROWSERBASE.md` — defines the managed browser, CDP, Live View, and user-control execution contract.
+## Repository Map
+
+```text
+backend/app/
+  api/                 FastAPI routes
+  browser/             CDP observer, sanitizer, highlighter, resolver, verifier
+  contracts/           Pydantic runtime contracts
+  domain/              safety, state transitions, and skill rules
+  integrations/        Browserbase, EverOS, Snowflake, and Cortex adapters
+  persistence/         operational SQLite ledger and outbox
+  services/            orchestration, guidance, replay, repair, telemetry, cost
+web/src/
+  setup/               participant setup
+  routines/            routine selection
+  session/             Live View and guidance experience
+  caregiver/           history, costs, notes, and routine evidence
+contracts/             portable JSON Schemas
+snowflake/
+  migrations/          product tables and evidence views
+  queries/             drill-through and reconciliation queries
+  streamlit/           caregiver evidence app
+scripts/               Snowflake deployment and live readiness commands
+docs/                  decisions, provider contracts, runbook, and evidence boundary
+```
+
+## Local Development
+
+Required tool versions are recorded in [`.tool-versions`](.tool-versions): Node.js 26.5.1,
+Python 3.12.11, and pnpm 11.9.0. The container build pins `uv` 0.11.24. Snowflake deployment
+also requires the `snow` CLI; Fly deployment requires `flyctl`.
+
+1. Install dependencies and the Playwright Chromium runtime used for CDP attachment:
+
+   ```bash
+   cp .env.example .env
+   make setup
+   ```
+
+2. Populate `.env` with live Browserbase, EverOS, and Snowflake service credentials plus a
+   strong `SESSION_SIGNING_SECRET`. Keep `APP_ENV=development`. No local provider substitute is
+   started by this repository.
+
+3. Run the backend:
+
+   ```bash
+   make backend
+   ```
+
+4. In another terminal, run Vite against the local API:
+
+   ```bash
+   VITE_API_BASE_URL=http://localhost:8000 pnpm dev
+   ```
+
+5. Open `http://localhost:5173`. FastAPI documentation is at
+   `http://localhost:8000/docs`.
+
+For a production-shaped local process that serves the built UI and API from one origin:
+
+```bash
+pnpm build
+PORT=8000 pnpm start
+```
+
+Basic process health does not call providers:
+
+```bash
+curl -fsS http://localhost:8000/health
+curl -fsS http://localhost:8000/ready
+```
+
+The stricter readiness script requires authorized Browserbase, EverOS, Snowflake, and guidance
+capabilities and rejects fixture mode. Browserbase reaches `authorized` only while a
+WebAccessible-owned managed session is attached:
+
+```bash
+API_PUBLIC_URL=http://localhost:8000 ./scripts/live-readiness.sh
+```
+
+## Snowflake Deployment
+
+The Snowflake CLI connection name defaults to `webaccessible`. It must point at the scoped
+service role, warehouse, `WEBACCESSIBLE` database, and `APP` schema.
+
+```bash
+snow connection test --connection webaccessible
+SNOWFLAKE_CONNECTION=webaccessible ./scripts/apply-snowflake.sh
+SNOWFLAKE_CONNECTION=webaccessible ./scripts/deploy-streamlit.sh
+```
+
+To deploy and open the Streamlit app in one command:
+
+```bash
+SNOWFLAKE_CONNECTION=webaccessible OPEN_STREAMLIT=1 ./scripts/deploy-streamlit.sh
+```
+
+The migration script applies, in order:
+
+1. `001_session_steps.sql`
+2. `002_product_tables.sql`
+3. `003_evidence_views.sql`
+
+Published effective rate-card rows must exist in `COST_RATE_CARDS` before an actual cost can be
+calculated. The calculator deliberately reports unavailable rather than guessing a missing
+rate or treating estimated tokens as actual.
+
+## Fly Deployment
+
+[`fly.toml`](fly.toml) defines the `webaccessible-care` app in `sjc`, one always-running shared
+machine, HTTPS, and a persistent `/data` volume for transient operational state. The Docker
+image builds the React application and serves it from FastAPI on port 8080.
+
+For a new Fly app, provision the app and volume once:
+
+```bash
+flyctl apps create webaccessible-care
+flyctl volumes create webaccessible_data --app webaccessible-care --region sjc --size 1
+```
+
+With the values exported in the current shell, install the live service secrets:
+
+```bash
+flyctl secrets set --app webaccessible-care \
+  BROWSERBASE_API_KEY="$BROWSERBASE_API_KEY" \
+  EVEROS_API_KEY="$EVEROS_API_KEY" \
+  SNOWFLAKE_ACCOUNT="$SNOWFLAKE_ACCOUNT" \
+  SNOWFLAKE_USER="$SNOWFLAKE_USER" \
+  SNOWFLAKE_PASSWORD="$SNOWFLAKE_PASSWORD" \
+  SNOWFLAKE_ROLE="$SNOWFLAKE_ROLE" \
+  SNOWFLAKE_WAREHOUSE="$SNOWFLAKE_WAREHOUSE" \
+  SNOWFLAKE_DATABASE="$SNOWFLAKE_DATABASE" \
+  SNOWFLAKE_SCHEMA="$SNOWFLAKE_SCHEMA" \
+  SESSION_SIGNING_SECRET="$(openssl rand -hex 32)" \
+  APP_PUBLIC_URL="https://webaccessible-care.fly.dev" \
+  API_PUBLIC_URL="https://webaccessible-care.fly.dev"
+```
+
+Deploy and inspect the hosted process:
+
+```bash
+flyctl deploy --app webaccessible-care
+flyctl status --app webaccessible-care
+flyctl logs --app webaccessible-care --no-tail
+curl -fsS https://webaccessible-care.fly.dev/health
+```
+
+During an attached Browserbase task, run the strict provider gate:
+
+```bash
+API_PUBLIC_URL=https://webaccessible-care.fly.dev ./scripts/live-readiness.sh
+```
+
+Passing that script proves only the current runtime readiness response. Demo readiness still
+requires the captured cold teach run, retrievable EverOS objects, warm replay, explicit
+Browserbase termination, Snowflake rows, and Streamlit drill-through listed in the demo
+runbook and evidence manifest.
+
+## Provider State Labels
+
+`GET /ready` uses these labels independently for each capability:
+
+| Label | Meaning |
+|---|---|
+| `unconfigured` | Required configuration is absent. |
+| `configured` | Required names/secrets are present; no successful live operation is asserted. |
+| `reachable` | The provider answered a live request; authorization is not yet asserted. |
+| `authorized` | The required scoped live operation succeeded. |
+| `unavailable` | A configured provider failed the current live check. |
+| `capacity_exhausted` | Browserbase rejected work because the account has no current capacity. |
+
+`ready: true` is a runtime preflight signal, not a substitute for a frozen end-to-end evidence
+run. Fixture state, unsynchronized rows, disconnected Streamlit data, or a configured-only
+provider cannot support a live sponsor claim.
+
+## Static Checks and Build
+
+The CI workflow runs the same non-provider checks:
+
+```bash
+uv sync --frozen --all-groups
+pnpm install --frozen-lockfile
+uv run ruff check backend
+uv run mypy backend
+pnpm typecheck
+pnpm build
+```
+
+## Source Documents
+
+- [`webaccessible-spec.md`](webaccessible-spec.md): canonical product behavior and constraints.
+- [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md): component contracts, work packages, and
+  evidence gates.
+- [`AGENTS.md`](AGENTS.md): repository operating rules.
+- [`SPONSORS.md`](SPONSORS.md) and [`docs/sponsors/`](docs/sponsors/): provider roles and proof
+  requirements.
+- [`docs/demo-runbook.md`](docs/demo-runbook.md): exact cold/warm qualification sequence.
+- [`docs/evidence-manifest.md`](docs/evidence-manifest.md): artifacts required before a demo
+  readiness claim.

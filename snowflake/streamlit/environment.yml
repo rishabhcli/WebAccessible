@@ -1,0 +1,8 @@
+name: webaccessible-caregiver
+channels:
+  - snowflake
+dependencies:
+  - python=3.12
+  - streamlit
+  - snowflake-snowpark-python
+  - pandas

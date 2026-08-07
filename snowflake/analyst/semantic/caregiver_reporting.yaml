@@ -1,0 +1,1388 @@
+# WebAccessible caregiver reporting semantic model.
+#
+# Deployed as the Snowflake semantic view WEBACCESSIBLE.ANALYST.CAREGIVER_REPORTING via
+# SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML, and consumed by Cortex Analyst through the
+# "semantic_view" request field. Semantic views are Snowflake's recommended Cortex Analyst
+# input; stage-hosted semantic model YAML files remain supported only for backward
+# compatibility.
+#
+# Every base table is a view in WEBACCESSIBLE.ANALYST, and every one of those views reads
+# only from the product-owned verified views in WEBACCESSIBLE.APP. No base table, raw DOM
+# text, model prompt, uploaded document, phone number, account number, credential, or full
+# URL is reachable from this model. See migrations/011_analyst_reporting_views.sql for the
+# column allowlist and the exclusion rationale.
+
+name: CAREGIVER_REPORTING
+description: >-
+  Verified WebAccessible caregiver reporting. Covers task sessions and their terminal
+  outcomes, per-step assistance events, warm-replay rates, selector and verification
+  evidence, Browserbase and EverOS synchronization state, provider-reported model usage,
+  and rate-card-backed verified inference cost. Contains verified runs only. Amounts are
+  never estimated: a cost is reported only when provider usage is actual, a MODEL_COSTS row
+  is calculated, and a matching COST_RATE_CARDS row exists.
+
+tables:
+  - name: sessions
+    description: >-
+      One row per verified WebAccessible task run for one supported adult. This is the
+      grain every other table joins to. Participant names are not stored in Snowflake;
+      a supported adult is identified only by user_id.
+    base_table:
+      database: WEBACCESSIBLE
+      schema: ANALYST
+      table: V_CAREGIVER_SESSION
+    primary_key:
+      columns:
+        - run_id
+
+    dimensions:
+      - name: run_id
+        description: Product-owned run identifier. Cite this in every answer.
+        expr: run_id
+        data_type: VARCHAR
+        synonyms:
+          - run identifier
+          - run id
+      - name: session_id
+        description: Product-owned session identifier. Cite this in every answer.
+        expr: session_id
+        data_type: VARCHAR
+        synonyms:
+          - session identifier
+          - session id
+      - name: user_id
+        description: >-
+          Opaque identifier for the supported adult. Snowflake stores no participant name,
+          so this is the only way to scope an answer to one person.
+        expr: user_id
+        data_type: VARCHAR
+        synonyms:
+          - supported adult
+          - participant
+          - person
+          - user
+          - mom
+      - name: task_id
+        description: Stable identifier for the routine, unchanged across runs.
+        expr: task_id
+        data_type: VARCHAR
+      - name: routine_name
+        description: Caregiver-readable routine name, for example the name of a recurring bill payment.
+        expr: task_name
+        data_type: VARCHAR
+        synonyms:
+          - routine
+          - task
+          - task name
+          - errand
+          - chore
+      - name: run_sequence_number
+        description: >-
+          Ordinal of this run within the same user_id and task_id, ordered by start time.
+          Run 1 is the real cold run that established the cost baseline.
+        expr: run_no
+        data_type: NUMBER
+        synonyms:
+          - run number
+          - attempt number
+          - how many times
+      - name: run_kind
+        description: >-
+          Economic class of the run. cold is a first teach run that paid for guidance, warm
+          is a deterministic replay from memory, repair is a corrected replay.
+        expr: run_kind
+        data_type: VARCHAR
+        is_enum: true
+        sample_values:
+          - cold
+          - warm
+          - repair
+          - other
+        synonyms:
+          - run type
+          - cold or warm
+      - name: session_mode
+        description: Product session mode recorded when the run started.
+        expr: mode
+        data_type: VARCHAR
+        is_enum: true
+        sample_values:
+          - cold_teach
+          - replay
+          - caregiver_record
+          - observe
+      - name: session_outcome
+        description: >-
+          Verified terminal outcome. completed means the task finished and was verified.
+          prepared means everything was staged and verified up to the point where the
+          person must still perform the final irreversible action themselves.
+        expr: terminal_outcome
+        data_type: VARCHAR
+        is_enum: true
+        sample_values:
+          - completed
+          - prepared
+        synonyms:
+          - outcome
+          - result
+          - how it went
+          - did it work
+      - name: outcome_provenance
+        description: Source of truth that established the terminal outcome.
+        expr: terminal_provenance
+        data_type: VARCHAR
+      - name: session_cost_status
+        description: >-
+          Cost verifiability for the run. verified means every model call is priced from a
+          rate card. verified_zero means the run made no model calls at all, which is the
+          warm-replay result. unavailable means at least one call is unpriced, and the run
+          then reports no cost rather than an estimate.
+        expr: cost_status
+        data_type: VARCHAR
+        is_enum: true
+        sample_values:
+          - verified
+          - verified_zero
+          - unavailable
+        synonyms:
+          - cost status
+          - is the cost verified
+      - name: skill_id
+        description: WebAccessible skill identifier replayed or taught by this run.
+        expr: skill_id
+        data_type: VARCHAR
+      - name: skill_revision
+        description: Skill revision number replayed or taught by this run.
+        expr: skill_revision
+        data_type: NUMBER
+      - name: everos_case_id
+        description: EverOS Case identifier for this run's memory lineage.
+        expr: everos_case_id
+        data_type: VARCHAR
+      - name: everos_skill_id
+        description: EverOS Skill identifier for this run's memory lineage.
+        expr: everos_skill_id
+        data_type: VARCHAR
+      - name: everos_episode_id
+        description: EverOS Episode identifier written only for a truthful verified outcome.
+        expr: everos_episode_id
+        data_type: VARCHAR
+      - name: browserbase_session_id
+        description: >-
+          Browserbase managed browser session identifier owned and terminated by
+          WebAccessible. Provider URLs and keys are not stored.
+        expr: browserbase_session_id
+        data_type: VARCHAR
+      - name: browserbase_region
+        description: Browserbase region that hosted the managed browser session.
+        expr: browserbase_region
+        data_type: VARCHAR
+      - name: browserbase_status
+        description: Terminal provider status reported by Browserbase for the session.
+        expr: browserbase_status
+        data_type: VARCHAR
+        is_enum: true
+        sample_values:
+          - COMPLETED
+          - TERMINATED
+      - name: build_commit
+        description: Application build commit that produced the run.
+        expr: build_commit
+        data_type: VARCHAR
+      - name: verified_outcome_currency
+        description: Currency of the verified outcome amount, when the routine had a verified amount.
+        expr: verified_currency
+        data_type: VARCHAR
+
+    time_dimensions:
+      - name: session_started_at
+        description: >-
+          When the run started. Use this for every time window, including this week, last
+          week, and month-to-date questions.
+        expr: started_at
+        data_type: TIMESTAMP_NTZ
+        synonyms:
+          - started
+          - start time
+          - date
+          - when
+      - name: session_ended_at
+        description: When the run reached its verified terminal outcome.
+        expr: ended_at
+        data_type: TIMESTAMP_NTZ
+        synonyms:
+          - ended
+          - finished
+      - name: session_last_model_call_at
+        description: Completion time of the last model call in the run, if any.
+        expr: last_model_call_at
+        data_type: TIMESTAMP_NTZ
+
+    facts:
+      - name: session_duration_seconds
+        description: Elapsed seconds between the run start and its verified terminal outcome.
+        expr: duration_seconds
+        data_type: NUMBER
+      - name: session_model_call_count
+        description: Number of model calls attributed to the run.
+        expr: model_call_count
+        data_type: NUMBER
+      - name: session_priced_call_count
+        description: Number of the run's model calls that carry a rate-card-backed verified price.
+        expr: priced_call_count
+        data_type: NUMBER
+      - name: session_actual_model_tokens
+        description: Provider-reported actual tokens across every token class for the run.
+        expr: actual_model_tokens
+        data_type: NUMBER
+      - name: session_verified_cost_usd
+        description: >-
+          Verified USD inference cost for the run. NULL whenever any contributing call is
+          unpriced. Never an estimate and never inferred from a missing rate card.
+        expr: actual_cost_usd
+        data_type: NUMBER
+      - name: session_cold_baseline_usd
+        description: >-
+          Verified cost of the real first cold run for the same user_id and task_id, used
+          as the honest savings baseline.
+        expr: cold_baseline_usd
+        data_type: NUMBER
+      - name: session_cost_reduction_ratio
+        description: >-
+          Fractional cost reduction against the cold baseline for the same routine. 0.9
+          means this run cost 90 percent less than the first cold run.
+        expr: cost_reduction_ratio
+        data_type: NUMBER
+      - name: session_verified_outcome_amount
+        description: Verified monetary amount of the routine outcome, when the routine had one.
+        expr: verified_amount
+        data_type: NUMBER
+      - name: completed_session_flag
+        description: 1 when the run's terminal outcome is completed, otherwise 0.
+        expr: completed_session
+        data_type: NUMBER
+      - name: prepared_session_flag
+        description: 1 when the run's terminal outcome is prepared, otherwise 0.
+        expr: prepared_session
+        data_type: NUMBER
+      - name: cold_session_flag
+        description: 1 when the run is a cold teach run, otherwise 0.
+        expr: cold_session
+        data_type: NUMBER
+      - name: warm_session_flag
+        description: 1 when the run is a warm replay, otherwise 0.
+        expr: warm_session
+        data_type: NUMBER
+      - name: repair_session_flag
+        description: 1 when the run is a repair run, otherwise 0.
+        expr: repair_session
+        data_type: NUMBER
+      - name: cost_verified_session_flag
+        description: 1 when the run's cost is verified or verified zero, otherwise 0.
+        expr: cost_verified_session
+        data_type: NUMBER
+      - name: cost_unavailable_session_flag
+        description: 1 when the run has at least one unpriced call and therefore reports no cost.
+        expr: cost_unavailable_session
+        data_type: NUMBER
+
+    metrics:
+      - name: verified_session_count
+        description: Number of verified runs. This is the default count for session questions.
+        expr: COUNT(run_id)
+        synonyms:
+          - session count
+          - how many sessions
+          - number of runs
+      - name: completed_session_count
+        description: Number of verified runs whose terminal outcome is completed.
+        expr: SUM(completed_session)
+      - name: prepared_session_count
+        description: Number of verified runs whose terminal outcome is prepared.
+        expr: SUM(prepared_session)
+      - name: cold_session_count
+        description: Number of verified cold teach runs.
+        expr: SUM(cold_session)
+      - name: warm_session_count
+        description: Number of verified warm replays.
+        expr: SUM(warm_session)
+      - name: repair_session_count
+        description: Number of verified repair runs.
+        expr: SUM(repair_session)
+      - name: completed_session_rate
+        description: Share of verified runs that completed, between 0 and 1.
+        expr: AVG(completed_session)
+        synonyms:
+          - completion rate
+          - success rate
+      - name: session_verified_cost_usd_total
+        description: >-
+          Total verified USD inference cost across runs. Runs whose cost status is
+          unavailable contribute nothing, so always report
+          cost_unavailable_session_count alongside this metric.
+        expr: SUM(actual_cost_usd)
+        synonyms:
+          - total cost
+          - verified cost
+          - what did it cost
+      - name: cost_verified_session_count
+        description: Number of runs whose cost is fully verified or verified zero.
+        expr: SUM(cost_verified_session)
+      - name: cost_unavailable_session_count
+        description: >-
+          Number of runs excluded from any cost total because at least one model call is
+          unpriced. Must accompany every cost answer.
+        expr: SUM(cost_unavailable_session)
+      - name: session_actual_model_token_total
+        description: Total provider-reported actual tokens across runs.
+        expr: SUM(actual_model_tokens)
+      - name: session_model_call_total
+        description: Total model calls across runs.
+        expr: SUM(model_call_count)
+      - name: average_session_duration_seconds
+        description: Mean elapsed seconds per verified run.
+        expr: AVG(duration_seconds)
+      - name: average_cost_reduction_rate
+        description: Mean fractional cost reduction against the cold baseline.
+        expr: AVG(cost_reduction_ratio)
+        synonyms:
+          - savings
+          - cost reduction
+      - name: earliest_session_start
+        description: Start time of the earliest verified run in scope.
+        expr: MIN(started_at)
+      - name: latest_session_start
+        description: Start time of the most recent verified run in scope.
+        expr: MAX(started_at)
+
+  - name: assistance_events
+    description: >-
+      One row per assistance step observed inside a verified run: what the person was
+      doing, whether the step came from memory, and how the step ended. Model token usage
+      and latency are deliberately absent here because the step ledger records zeros for
+      observed events; use the model_usage table for usage and cost.
+    base_table:
+      database: WEBACCESSIBLE
+      schema: ANALYST
+      table: V_CAREGIVER_ASSISTANCE_EVENT
+
+    dimensions:
+      - name: event_id
+        description: Idempotent telemetry event identifier for the step. Cite this when citing a step.
+        expr: event_id
+        data_type: VARCHAR
+      - name: event_run_id
+        description: Run this step belongs to.
+        expr: run_id
+        data_type: VARCHAR
+      - name: event_session_id
+        description: Session this step belongs to.
+        expr: session_id
+        data_type: VARCHAR
+      - name: event_step_id
+        description: Route step identifier this event advanced.
+        expr: step_id
+        data_type: VARCHAR
+      - name: event_step_number
+        description: Ordinal position of the step within the run.
+        expr: step_no
+        data_type: NUMBER
+      - name: site_domain
+        description: >-
+          Origin host of the page, for example an insurer or pharmacy domain. Only the host
+          is stored; paths, query strings, and full URLs are never persisted.
+        expr: site_domain
+        data_type: VARCHAR
+        synonyms:
+          - website
+          - site
+          - domain
+          - which site
+      - name: event_action
+        description: Product event type that produced the step. A fixed vocabulary, not page text.
+        expr: event_action
+        data_type: VARCHAR
+        is_enum: true
+        sample_values:
+          - page_observed
+          - interaction_observed
+          - help_requested
+          - guidance_presented
+          - guidance_dismissed
+          - target_resolved
+          - user_action_observed
+          - verification_observed
+          - task_abandoned
+      - name: event_guidance_mode
+        description: >-
+          Which guidance path produced the step. replay means it came from stored memory
+          with no model call, cold means a model produced the guidance, repair means a
+          corrected step, none means passive observation.
+        expr: guidance_mode
+        data_type: VARCHAR
+        is_enum: true
+        sample_values:
+          - none
+          - cold
+          - replay
+          - repair
+      - name: event_outcome
+        description: >-
+          How the step ended. ok is a clean step, wrong_click is a mis-tap the tool caught,
+          stuck is an observed difficulty signal, escalated means the step raised a
+          caregiver escalation.
+        expr: outcome
+        data_type: VARCHAR
+        is_enum: true
+        sample_values:
+          - ok
+          - wrong_click
+          - stuck
+          - escalated
+        synonyms:
+          - step outcome
+          - did she get stuck
+      - name: event_selector_tier
+        description: Selector strategy that resolved the target element.
+        expr: selector_tier
+        data_type: VARCHAR
+        is_enum: true
+        sample_values:
+          - aria
+          - text
+          - css
+      - name: event_selector_result
+        description: Whether the selector resolved to a single actionable element.
+        expr: selector_result
+        data_type: VARCHAR
+      - name: event_verification_result
+        description: Whether the expected page transition was verified after the step.
+        expr: verification_result
+        data_type: VARCHAR
+      - name: event_replayed_from_memory
+        description: True when the step was replayed deterministically from stored memory.
+        expr: replayed_from_memory
+        data_type: BOOLEAN
+        synonyms:
+          - from memory
+          - replayed
+      - name: event_trusted_user_action
+        description: >-
+          True when the person performed the actual click or submit themselves. WebAccessible
+          never performs the target action for them.
+        expr: trusted_user_action
+        data_type: BOOLEAN
+      - name: event_run_mode
+        description: Session mode of the run that contains the step.
+        expr: run_mode
+        data_type: VARCHAR
+      - name: event_run_outcome
+        description: Terminal outcome of the run that contains the step.
+        expr: terminal_outcome
+        data_type: VARCHAR
+
+    time_dimensions:
+      - name: event_occurred_at
+        description: When the step happened.
+        expr: occurred_at
+        data_type: TIMESTAMP_NTZ
+        synonyms:
+          - step time
+          - when the step happened
+
+    facts:
+      - name: replayed_step_flag
+        description: 1 when the step was replayed from memory, otherwise 0.
+        expr: replayed_step
+        data_type: NUMBER
+      - name: ok_step_flag
+        description: 1 when the step outcome is ok, otherwise 0.
+        expr: ok_step
+        data_type: NUMBER
+      - name: stuck_step_flag
+        description: 1 when the step outcome is stuck, otherwise 0.
+        expr: stuck_step
+        data_type: NUMBER
+      - name: wrong_click_step_flag
+        description: 1 when the step outcome is wrong_click, otherwise 0.
+        expr: wrong_click_step
+        data_type: NUMBER
+      - name: escalated_step_flag
+        description: 1 when the step outcome is escalated, otherwise 0.
+        expr: escalated_step
+        data_type: NUMBER
+      - name: trusted_user_action_step_flag
+        description: 1 when the person performed the action themselves, otherwise 0.
+        expr: trusted_user_action_step
+        data_type: NUMBER
+      - name: model_assisted_step_flag
+        description: 1 when the step is linked to a model call, otherwise 0.
+        expr: model_assisted_step
+        data_type: NUMBER
+
+    metrics:
+      - name: assistance_event_count
+        description: Number of assistance steps in scope.
+        expr: COUNT(*)
+        synonyms:
+          - step count
+          - how many steps
+      - name: replayed_step_count
+        description: Number of steps replayed deterministically from memory.
+        expr: SUM(replayed_step)
+      - name: replay_rate
+        description: >-
+          Share of assistance steps replayed from memory, between 0 and 1. This is the
+          replay rate.
+        expr: AVG(replayed_step)
+        synonyms:
+          - replay rate
+          - memory rate
+          - how much came from memory
+      - name: ok_step_count
+        description: Number of steps that ended ok.
+        expr: SUM(ok_step)
+      - name: ok_step_rate
+        description: Share of steps that ended ok, between 0 and 1.
+        expr: AVG(ok_step)
+      - name: stuck_step_count
+        description: Number of observed stuck steps.
+        expr: SUM(stuck_step)
+        synonyms:
+          - times she got stuck
+          - stuck count
+      - name: stuck_step_rate
+        description: Share of steps where a stuck signal was observed, between 0 and 1.
+        expr: AVG(stuck_step)
+        synonyms:
+          - confusion rate
+      - name: wrong_click_step_count
+        description: Number of mis-taps the tool caught.
+        expr: SUM(wrong_click_step)
+      - name: escalated_step_count
+        description: Number of steps that raised a caregiver escalation.
+        expr: SUM(escalated_step)
+      - name: trusted_user_action_step_count
+        description: Number of steps the person performed themselves.
+        expr: SUM(trusted_user_action_step)
+      - name: model_assisted_step_count
+        description: Number of steps that required a model call.
+        expr: SUM(model_assisted_step)
+      - name: model_assisted_step_rate
+        description: Share of steps that required a model call, between 0 and 1.
+        expr: AVG(model_assisted_step)
+      - name: first_assistance_event_at
+        description: Timestamp of the first step in scope.
+        expr: MIN(occurred_at)
+      - name: last_assistance_event_at
+        description: Timestamp of the last step in scope.
+        expr: MAX(occurred_at)
+
+  - name: model_usage
+    description: >-
+      One row per model call made inside a verified run, carrying provider-reported actual
+      token usage and the rate-card-backed verified USD amount. This is the only
+      authoritative source of model usage and inference cost.
+    base_table:
+      database: WEBACCESSIBLE
+      schema: ANALYST
+      table: V_CAREGIVER_MODEL_USAGE
+
+    dimensions:
+      - name: call_id
+        description: Immutable model call identifier. Cite this when citing a cost.
+        expr: call_id
+        data_type: VARCHAR
+      - name: call_run_id
+        description: Run this call belongs to.
+        expr: run_id
+        data_type: VARCHAR
+      - name: call_session_id
+        description: Session this call belongs to.
+        expr: session_id
+        data_type: VARCHAR
+      - name: call_step_id
+        description: Route step this call served.
+        expr: step_id
+        data_type: VARCHAR
+      - name: call_event_id
+        description: Telemetry event this call is linked to.
+        expr: event_id
+        data_type: VARCHAR
+      - name: call_guidance_mode
+        description: Guidance path that triggered the call.
+        expr: guidance_mode
+        data_type: VARCHAR
+        is_enum: true
+        sample_values:
+          - cold
+          - replay
+          - repair
+      - name: model_provider
+        description: Provider that served the call.
+        expr: provider
+        data_type: VARCHAR
+        is_enum: true
+        sample_values:
+          - snowflake_cortex
+      - name: model_name
+        description: Model that served the call.
+        expr: model
+        data_type: VARCHAR
+        synonyms:
+          - model
+          - which model
+      - name: model_version
+        description: Exact model version priced by the rate card.
+        expr: model_version
+        data_type: VARCHAR
+      - name: call_usage_status
+        description: >-
+          Whether token counts are provider-reported actuals. Only actual usage is ever
+          priced; an estimate is never turned into a cost.
+        expr: usage_status
+        data_type: VARCHAR
+        is_enum: true
+        sample_values:
+          - actual
+          - estimated
+      - name: call_status
+        description: Terminal status the provider returned for the call.
+        expr: call_status
+        data_type: VARCHAR
+      - name: rate_card_version
+        description: Effective-dated COST_RATE_CARDS version used to price the call.
+        expr: rate_card_version
+        data_type: VARCHAR
+        synonyms:
+          - rate card
+      - name: rate_card_source_reference
+        description: Published source reference for the rate card that priced the call.
+        expr: rate_source_reference
+        data_type: VARCHAR
+      - name: rate_card_token_classes
+        description: Token classes the rate card prices, for example input and output.
+        expr: token_classes
+        data_type: VARCHAR
+      - name: cost_calculation_status
+        description: Whether a MODEL_COSTS row was calculated for the call.
+        expr: calculation_status
+        data_type: VARCHAR
+        is_enum: true
+        sample_values:
+          - calculated
+          - unavailable
+      - name: call_cost_verified
+        description: >-
+          True only when the call has actual provider usage, a single calculated
+          MODEL_COSTS row with a non-null USD amount, and a matching COST_RATE_CARDS row.
+          When false the call has no price and no price may be inferred for it.
+        expr: is_cost_verified
+        data_type: BOOLEAN
+
+    time_dimensions:
+      - name: call_requested_at
+        description: When the call was dispatched.
+        expr: requested_at
+        data_type: TIMESTAMP_NTZ
+      - name: call_completed_at
+        description: When the provider returned the call.
+        expr: completed_at
+        data_type: TIMESTAMP_NTZ
+      - name: rate_card_effective_from
+        description: Start of the rate card's effective window.
+        expr: rate_effective_from
+        data_type: TIMESTAMP_NTZ
+      - name: rate_card_effective_to
+        description: End of the rate card's effective window.
+        expr: rate_effective_to
+        data_type: TIMESTAMP_NTZ
+
+    facts:
+      - name: call_actual_input_tokens
+        description: Provider-reported uncached input tokens for the call.
+        expr: actual_input_tokens
+        data_type: NUMBER
+      - name: call_actual_cached_input_tokens
+        description: Provider-reported cached input tokens for the call.
+        expr: actual_cached_input_tokens
+        data_type: NUMBER
+      - name: call_actual_reasoning_tokens
+        description: Provider-reported reasoning tokens for the call.
+        expr: actual_reasoning_tokens
+        data_type: NUMBER
+      - name: call_actual_output_tokens
+        description: Provider-reported output tokens for the call.
+        expr: actual_output_tokens
+        data_type: NUMBER
+      - name: call_actual_total_tokens
+        description: Sum of all provider-reported token classes for the call.
+        expr: actual_total_tokens
+        data_type: NUMBER
+      - name: call_verified_cost_usd
+        description: >-
+          Rate-card-backed USD amount for the call, or NULL when the call is unpriced.
+          Never estimated and never back-filled from account usage views.
+        expr: verified_cost_usd
+        data_type: NUMBER
+      - name: priced_call_flag
+        description: 1 when the call carries a verified price, otherwise 0.
+        expr: priced_call
+        data_type: NUMBER
+      - name: unpriced_call_flag
+        description: 1 when the call has no verified price, otherwise 0.
+        expr: unpriced_call
+        data_type: NUMBER
+      - name: call_latency_ms
+        description: Provider round-trip latency for the call in milliseconds.
+        expr: latency_ms
+        data_type: NUMBER
+
+    metrics:
+      - name: model_call_count
+        description: Number of model calls in scope.
+        expr: COUNT(call_id)
+        synonyms:
+          - how many model calls
+          - call count
+      - name: verified_model_cost_usd
+        description: >-
+          Total rate-card-backed USD cost of the calls in scope. Unpriced calls contribute
+          nothing, so always report unpriced_model_call_count alongside this metric.
+        expr: SUM(verified_cost_usd)
+        synonyms:
+          - verified cost
+          - inference cost
+          - what did the model cost
+      - name: priced_model_call_count
+        description: Number of calls carrying a verified price.
+        expr: SUM(priced_call)
+      - name: unpriced_model_call_count
+        description: >-
+          Number of calls with no verified price. Any value above zero means the cost total
+          is incomplete and must be reported as such.
+        expr: SUM(unpriced_call)
+      - name: actual_input_token_total
+        description: Total provider-reported uncached input tokens.
+        expr: SUM(actual_input_tokens)
+      - name: actual_cached_input_token_total
+        description: Total provider-reported cached input tokens.
+        expr: SUM(actual_cached_input_tokens)
+      - name: actual_reasoning_token_total
+        description: Total provider-reported reasoning tokens.
+        expr: SUM(actual_reasoning_tokens)
+      - name: actual_output_token_total
+        description: Total provider-reported output tokens.
+        expr: SUM(actual_output_tokens)
+      - name: actual_token_total
+        description: Total provider-reported tokens across every class.
+        expr: SUM(actual_total_tokens)
+        synonyms:
+          - total tokens
+      - name: average_model_call_latency_ms
+        description: Mean provider round-trip latency in milliseconds.
+        expr: AVG(latency_ms)
+      - name: distinct_model_count
+        description: Number of distinct models actually used in scope.
+        expr: COUNT(DISTINCT model)
+      - name: first_model_call_at
+        description: Dispatch time of the first call in scope.
+        expr: MIN(requested_at)
+      - name: last_model_call_completed_at
+        description: Completion time of the last call in scope.
+        expr: MAX(completed_at)
+
+  - name: replay_evidence
+    description: >-
+      One row per selector resolution attempt inside a verified run. Proves the warm-replay
+      invariant: a matched selector, a verified transition, an action the person performed,
+      and no model call. Selector fingerprints and page predicates are not exposed.
+    base_table:
+      database: WEBACCESSIBLE
+      schema: ANALYST
+      table: V_CAREGIVER_REPLAY_EVIDENCE
+
+    dimensions:
+      - name: selector_attempt_id
+        description: Identifier of the selector resolution attempt.
+        expr: selector_attempt_id
+        data_type: VARCHAR
+      - name: attempt_run_id
+        description: Run this attempt belongs to.
+        expr: run_id
+        data_type: VARCHAR
+      - name: attempt_session_id
+        description: Session this attempt belongs to.
+        expr: session_id
+        data_type: VARCHAR
+      - name: attempt_step_id
+        description: Route step this attempt targeted.
+        expr: step_id
+        data_type: VARCHAR
+      - name: attempt_event_id
+        description: Telemetry event this attempt is linked to.
+        expr: event_id
+        data_type: VARCHAR
+      - name: attempt_number
+        description: Ordinal of the attempt for the same step.
+        expr: attempt_no
+        data_type: NUMBER
+      - name: attempt_selector_tier
+        description: Selector strategy used for the attempt.
+        expr: selector_tier
+        data_type: VARCHAR
+        is_enum: true
+        sample_values:
+          - aria
+          - text
+          - css
+      - name: attempt_resolution_result
+        description: Whether the selector resolved to a single actionable element.
+        expr: resolution_result
+        data_type: VARCHAR
+      - name: attempt_verification_result
+        description: Whether the expected transition was verified after the attempt.
+        expr: verification_result
+        data_type: VARCHAR
+      - name: replay_evidence_status
+        description: >-
+          Classified evidence for the attempt. zero_model_verified is the warm-replay
+          invariant: replayed from memory, selector matched, transition verified, action
+          performed by the person, and no model call.
+        expr: evidence_status
+        data_type: VARCHAR
+        is_enum: true
+        sample_values:
+          - zero_model_verified
+          - model_used
+          - selector_failed
+          - verification_failed
+          - observed
+      - name: attempt_replayed_from_memory
+        description: True when the attempt came from stored memory.
+        expr: replayed_from_memory
+        data_type: BOOLEAN
+      - name: attempt_trusted_user_action
+        description: True when the person performed the action for this attempt.
+        expr: trusted_user_action
+        data_type: BOOLEAN
+      - name: attempt_run_mode
+        description: Session mode of the run that contains the attempt.
+        expr: run_mode
+        data_type: VARCHAR
+      - name: attempt_skill_id
+        description: Skill replayed by the attempt.
+        expr: skill_id
+        data_type: VARCHAR
+      - name: attempt_skill_revision
+        description: Skill revision replayed by the attempt.
+        expr: skill_revision
+        data_type: NUMBER
+
+    time_dimensions:
+      - name: attempt_observed_at
+        description: When the attempt was observed.
+        expr: observed_at
+        data_type: TIMESTAMP_NTZ
+
+    facts:
+      - name: attempt_matched_candidate_count
+        description: Number of page elements the selector matched. One is the required result.
+        expr: matched_candidate_count
+        data_type: NUMBER
+      - name: zero_model_verified_flag
+        description: 1 when the attempt satisfies the zero-model warm-replay invariant.
+        expr: zero_model_verified_attempt
+        data_type: NUMBER
+      - name: selector_matched_flag
+        description: 1 when the selector matched, otherwise 0.
+        expr: selector_matched_attempt
+        data_type: NUMBER
+      - name: attempt_verified_flag
+        description: 1 when the transition was verified, otherwise 0.
+        expr: verified_attempt
+        data_type: NUMBER
+      - name: model_assisted_attempt_flag
+        description: 1 when the attempt required a model call, otherwise 0.
+        expr: model_assisted_attempt
+        data_type: NUMBER
+
+    metrics:
+      - name: selector_attempt_count
+        description: Number of selector resolution attempts in scope.
+        expr: COUNT(selector_attempt_id)
+      - name: zero_model_verified_attempt_count
+        description: Number of attempts satisfying the zero-model warm-replay invariant.
+        expr: SUM(zero_model_verified_attempt)
+      - name: zero_model_verified_rate
+        description: Share of attempts satisfying the zero-model invariant, between 0 and 1.
+        expr: AVG(zero_model_verified_attempt)
+      - name: selector_match_rate
+        description: Share of attempts whose selector matched, between 0 and 1.
+        expr: AVG(selector_matched_attempt)
+      - name: attempt_verification_rate
+        description: Share of attempts whose transition verified, between 0 and 1.
+        expr: AVG(verified_attempt)
+      - name: model_assisted_attempt_count
+        description: Number of attempts that required a model call.
+        expr: SUM(model_assisted_attempt)
+
+  - name: provider_sync
+    description: >-
+      One row per verified run describing Browserbase lifecycle, EverOS memory state, and
+      telemetry synchronization. Answers whether the record for a run is complete and
+      trustworthy. Provider keys, CDP URLs, and Live View URLs are never stored.
+    base_table:
+      database: WEBACCESSIBLE
+      schema: ANALYST
+      table: V_CAREGIVER_PROVIDER_SYNC
+
+    dimensions:
+      - name: sync_run_id
+        description: Run this synchronization record describes.
+        expr: run_id
+        data_type: VARCHAR
+      - name: sync_session_id
+        description: Session this synchronization record describes.
+        expr: session_id
+        data_type: VARCHAR
+      - name: telemetry_status
+        description: >-
+          Rolled-up telemetry state for the run. failed and pending both mean the record is
+          incomplete and must not be presented as a finished answer.
+        expr: telemetry_status
+        data_type: VARCHAR
+        is_enum: true
+        sample_values:
+          - synced
+          - pending
+          - failed
+          - unknown
+      - name: run_sync_status
+        description: Synchronization status recorded on the run itself.
+        expr: run_sync_status
+        data_type: VARCHAR
+      - name: sync_browserbase_session_id
+        description: Browserbase session identifier for this run.
+        expr: browserbase_session_id
+        data_type: VARCHAR
+      - name: provider_browserbase_status
+        description: Provider-reported Browserbase session status.
+        expr: browserbase_status
+        data_type: VARCHAR
+      - name: provider_limit_state
+        description: Browserbase capacity state observed for the run.
+        expr: provider_limit_state
+        data_type: VARCHAR
+      - name: agent_surface_used
+        description: >-
+          Always false. WebAccessible never uses an autonomous Browserbase Agent surface;
+          the person performs every target action.
+        expr: agent_surface_used
+        data_type: BOOLEAN
+      - name: everos_provider_status
+        description: EverOS provider status for the run's skill memory.
+        expr: everos_provider_status
+        data_type: VARCHAR
+      - name: everos_indexing_status
+        description: EverOS indexing status for the run's skill memory.
+        expr: everos_indexing_status
+        data_type: VARCHAR
+
+    time_dimensions:
+      - name: cdp_attached_at
+        description: When WebAccessible attached to the managed browser over CDP.
+        expr: cdp_attached_at
+        data_type: TIMESTAMP_NTZ
+      - name: live_view_ready_at
+        description: When the interactive Live View became ready for the person.
+        expr: live_view_ready_at
+        data_type: TIMESTAMP_NTZ
+      - name: first_trusted_user_action_at
+        description: When the person performed their first action in the managed browser.
+        expr: first_trusted_user_action_at
+        data_type: TIMESTAMP_NTZ
+      - name: browser_terminated_at
+        description: When WebAccessible explicitly terminated the managed browser session.
+        expr: browser_terminated_at
+        data_type: TIMESTAMP_NTZ
+      - name: last_step_sync_at
+        description: Most recent step synchronization timestamp for the run.
+        expr: last_step_sync_at
+        data_type: TIMESTAMP_NTZ
+      - name: last_ingestion_attempt_at
+        description: Most recent telemetry ingestion attempt for the run.
+        expr: last_ingestion_attempt_at
+        data_type: TIMESTAMP_NTZ
+      - name: last_model_sync_at
+        description: Most recent model call synchronization timestamp for the run.
+        expr: last_model_sync_at
+        data_type: TIMESTAMP_NTZ
+      - name: everos_retrieved_at
+        description: When the run's EverOS skill memory was last read back.
+        expr: everos_retrieved_at
+        data_type: TIMESTAMP_NTZ
+
+    facts:
+      - name: sync_step_row_count
+        description: Step rows synchronized for the run.
+        expr: step_row_count
+        data_type: NUMBER
+      - name: sync_distinct_event_count
+        description: Distinct telemetry events synchronized for the run.
+        expr: distinct_event_count
+        data_type: NUMBER
+      - name: sync_missing_event_id_count
+        description: Step rows missing an event identifier. Above zero means an incomplete record.
+        expr: missing_event_id_count
+        data_type: NUMBER
+      - name: sync_ingestion_row_count
+        description: Outbox ingestion rows recorded for the run.
+        expr: ingestion_row_count
+        data_type: NUMBER
+      - name: sync_ingestion_synced_count
+        description: Outbox rows confirmed synchronized.
+        expr: ingestion_synced_count
+        data_type: NUMBER
+      - name: sync_ingestion_pending_count
+        description: Outbox rows still pending or retrying. Above zero means an incomplete record.
+        expr: ingestion_pending_count
+        data_type: NUMBER
+      - name: sync_ingestion_failed_count
+        description: Outbox rows that failed to synchronize. Above zero means an incomplete record.
+        expr: ingestion_failed_count
+        data_type: NUMBER
+      - name: sync_model_call_count
+        description: Model calls synchronized for the run.
+        expr: model_call_count
+        data_type: NUMBER
+      - name: sync_model_call_failure_count
+        description: Model calls that did not reach a successful provider status.
+        expr: model_call_failure_count
+        data_type: NUMBER
+      - name: synced_run_flag
+        description: 1 when the run's telemetry status is synced, otherwise 0.
+        expr: synced_run
+        data_type: NUMBER
+      - name: pending_ingestion_run_flag
+        description: 1 when the run has pending ingestion rows, otherwise 0.
+        expr: pending_ingestion_run
+        data_type: NUMBER
+      - name: failed_ingestion_run_flag
+        description: 1 when the run has failed ingestion rows, otherwise 0.
+        expr: failed_ingestion_run
+        data_type: NUMBER
+
+    metrics:
+      - name: provider_sync_run_count
+        description: Number of verified runs with a synchronization record.
+        expr: COUNT(run_id)
+      - name: synced_run_count
+        description: Number of runs whose telemetry is fully synchronized.
+        expr: SUM(synced_run)
+      - name: pending_ingestion_run_count
+        description: Number of runs with pending telemetry ingestion.
+        expr: SUM(pending_ingestion_run)
+      - name: failed_ingestion_run_count
+        description: Number of runs with failed telemetry ingestion.
+        expr: SUM(failed_ingestion_run)
+      - name: pending_ingestion_row_total
+        description: Total pending or retrying outbox rows.
+        expr: SUM(ingestion_pending_count)
+      - name: failed_ingestion_row_total
+        description: Total failed outbox rows.
+        expr: SUM(ingestion_failed_count)
+      - name: model_call_failure_total
+        description: Total model calls that did not reach a successful provider status.
+        expr: SUM(model_call_failure_count)
+      - name: missing_event_id_total
+        description: Total step rows missing an event identifier.
+        expr: SUM(missing_event_id_count)
+
+  - name: escalations
+    description: >-
+      One row per escalation raised to the caregiver inside a verified run, with its
+      delivery lifecycle. Caregiver contact details and provider message hashes are never
+      exposed; delivery state distinguishes attempted from actually delivered.
+    base_table:
+      database: WEBACCESSIBLE
+      schema: ANALYST
+      table: V_CAREGIVER_ESCALATION
+
+    dimensions:
+      - name: escalation_id
+        description: Escalation identifier. Cite this when citing an escalation.
+        expr: escalation_id
+        data_type: VARCHAR
+      - name: escalation_run_id
+        description: Run that raised the escalation.
+        expr: run_id
+        data_type: VARCHAR
+      - name: escalation_session_id
+        description: Session that raised the escalation.
+        expr: session_id
+        data_type: VARCHAR
+      - name: escalation_reason
+        description: >-
+          Product reason code for the escalation, for example two failed attempts on the
+          same step. A fixed product vocabulary, not page or prompt text.
+        expr: reason
+        data_type: VARCHAR
+        synonyms:
+          - why
+          - reason
+      - name: escalation_status
+        description: >-
+          Delivery and resolution state. delivery_failed never counts as delivered.
+        expr: status
+        data_type: VARCHAR
+        is_enum: true
+        sample_values:
+          - pending
+          - delivered
+          - delivery_failed
+          - acknowledged
+          - resolved
+      - name: escalation_delivery_channel
+        description: Channel used to attempt delivery to the caregiver.
+        expr: delivery_channel
+        data_type: VARCHAR
+      - name: caregiver_response_status
+        description: Whether and how the caregiver responded to the escalation.
+        expr: caregiver_response_status
+        data_type: VARCHAR
+
+    time_dimensions:
+      - name: escalation_created_at
+        description: When the escalation was raised.
+        expr: created_at
+        data_type: TIMESTAMP_NTZ
+      - name: escalation_delivery_attempted_at
+        description: When delivery to the caregiver was attempted.
+        expr: delivery_attempted_at
+        data_type: TIMESTAMP_NTZ
+      - name: escalation_delivery_receipt_at
+        description: When delivery was actually confirmed.
+        expr: delivery_receipt_at
+        data_type: TIMESTAMP_NTZ
+      - name: caregiver_response_at
+        description: When the caregiver responded.
+        expr: caregiver_response_at
+        data_type: TIMESTAMP_NTZ
+
+    facts:
+      - name: escalation_delivery_attempt_count
+        description: Number of delivery attempts for the escalation.
+        expr: delivery_attempt_count
+        data_type: NUMBER
+      - name: delivered_escalation_flag
+        description: 1 when the escalation reached delivered, acknowledged, or resolved.
+        expr: delivered_escalation
+        data_type: NUMBER
+      - name: failed_delivery_escalation_flag
+        description: 1 when delivery failed, otherwise 0.
+        expr: failed_delivery_escalation
+        data_type: NUMBER
+      - name: unresolved_escalation_flag
+        description: 1 when the escalation is not yet resolved, otherwise 0.
+        expr: unresolved_escalation
+        data_type: NUMBER
+
+    metrics:
+      - name: escalation_count
+        description: Number of escalations in scope.
+        expr: COUNT(escalation_id)
+        synonyms:
+          - how many escalations
+          - how many times she needed help
+      - name: delivered_escalation_count
+        description: Number of escalations actually delivered to the caregiver.
+        expr: SUM(delivered_escalation)
+      - name: failed_delivery_escalation_count
+        description: Number of escalations whose delivery failed.
+        expr: SUM(failed_delivery_escalation)
+      - name: unresolved_escalation_count
+        description: Number of escalations not yet resolved.
+        expr: SUM(unresolved_escalation)
+      - name: escalation_delivery_attempt_total
+        description: Total delivery attempts across escalations.
+        expr: SUM(delivery_attempt_count)
+      - name: first_escalation_at
+        description: Timestamp of the earliest escalation in scope.
+        expr: MIN(created_at)
+      - name: last_escalation_at
+        description: Timestamp of the most recent escalation in scope.
+        expr: MAX(created_at)
+
+relationships:
+  - name: assistance_events_to_sessions
+    left_table: assistance_events
+    right_table: sessions
+    relationship_columns:
+      - left_column: run_id
+        right_column: run_id
+
+  - name: model_usage_to_sessions
+    left_table: model_usage
+    right_table: sessions
+    relationship_columns:
+      - left_column: run_id
+        right_column: run_id
+
+  - name: replay_evidence_to_sessions
+    left_table: replay_evidence
+    right_table: sessions
+    relationship_columns:
+      - left_column: run_id
+        right_column: run_id
+
+  - name: provider_sync_to_sessions
+    left_table: provider_sync
+    right_table: sessions
+    relationship_columns:
+      - left_column: run_id
+        right_column: run_id
+
+  - name: escalations_to_sessions
+    left_table: escalations
+    right_table: sessions
+    relationship_columns:
+      - left_column: run_id
+        right_column: run_id
+
+module_custom_instructions:
+  sql_generation: |
+    This model answers caregiver questions about one supported adult's verified
+    WebAccessible sessions. Follow every rule below.
+
+    Scope and identity:
+    - Snowflake stores no participant name. If the question names a person, do not try to
+      resolve the name from data. Filter on sessions.user_id, which the application always
+      supplies in the question.
+    - Every query must filter on sessions.user_id.
+    - Interpret this week, last week, and similar phrases against
+      sessions.session_started_at.
+
+    Citation, which is mandatory:
+    - Every result must let the caregiver trace the answer. Include sessions.run_id and
+      sessions.session_id, plus the relevant timestamp, in the DIMENSIONS of every query.
+      For session questions use sessions.session_started_at. For step questions also
+      include assistance_events.event_occurred_at. For cost questions also include
+      model_usage.call_id and model_usage.call_completed_at.
+    - Never answer with a bare aggregate that has no run or session identifier attached.
+
+    Cost, which must never be inferred:
+    - Report cost only from model_usage.verified_model_cost_usd or
+      sessions.session_verified_cost_usd. Both are backed by calculated MODEL_COSTS rows
+      and matching COST_RATE_CARDS rows.
+    - Never compute a cost from tokens, never multiply tokens by a price, never carry a
+      price across models or versions, and never substitute a rate when one is missing.
+    - Whenever a cost is requested, also select model_usage.unpriced_model_call_count and
+      sessions.cost_unavailable_session_count so an incomplete total is visible.
+    - A warm replay legitimately costs nothing. sessions.session_cost_status of
+      verified_zero means a genuine zero, not missing data.
+    - Never read Snowflake account usage or billing views. They lag and are reconciliation
+      only.
+
+    Usage:
+    - Report model usage only from the model_usage table. The assistance_events table
+      deliberately carries no token or latency columns.
+
+    Emptiness:
+    - The model contains verified runs only. If the filters match nothing, return no rows.
+      Do not widen the filters, drop the user_id predicate, or substitute an example,
+      illustrative, or typical value.
+
+  question_categorization: |
+    Classify caregiver questions as follows.
+    - How the person did, whether a routine finished, or what happened: use the sessions
+      table for outcomes and the assistance_events table for step detail.
+    - How much came from memory, replay rate, or whether guidance was needed: use
+      assistance_events.replay_rate and replay_evidence.
+    - What it cost, tokens, or which model ran: use the model_usage table.
+    - Whether the record is complete or a provider is behind: use the provider_sync table.
+    - When help was raised or whether the caregiver was notified: use the escalations table.
+    - A question naming a person is a scope question, not a data lookup. Names are not
+      stored; use the supplied sessions.user_id.
+
+verified_queries:
+  - name: weekly_session_outcomes_with_evidence
+    question: How did the supported adult do this week?
+    use_as_onboarding_question: true
+    sql: |
+      SELECT * FROM SEMANTIC_VIEW(
+        WEBACCESSIBLE.ANALYST.CAREGIVER_REPORTING
+        DIMENSIONS
+          sessions.user_id,
+          sessions.run_id,
+          sessions.session_id,
+          sessions.routine_name,
+          sessions.session_outcome,
+          sessions.run_kind,
+          sessions.session_started_at,
+          sessions.session_ended_at,
+          sessions.session_cost_status
+        METRICS
+          sessions.verified_session_count
+        WHERE sessions.session_started_at >= DATEADD('day', -7, CURRENT_TIMESTAMP())
+      )
+      ORDER BY session_started_at DESC
+
+  - name: weekly_verified_cost_with_completeness
+    question: What did the sessions cost this week?
+    use_as_onboarding_question: true
+    sql: |
+      SELECT * FROM SEMANTIC_VIEW(
+        WEBACCESSIBLE.ANALYST.CAREGIVER_REPORTING
+        DIMENSIONS
+          sessions.user_id,
+          sessions.run_id,
+          sessions.routine_name,
+          sessions.session_started_at
+        METRICS
+          model_usage.verified_model_cost_usd,
+          model_usage.unpriced_model_call_count,
+          model_usage.model_call_count
+        WHERE sessions.session_started_at >= DATEADD('day', -7, CURRENT_TIMESTAMP())
+      )
+      ORDER BY session_started_at DESC
+
+  - name: replay_rate_by_routine
+    question: How much of the work now comes from memory instead of the model?
+    use_as_onboarding_question: true
+    sql: |
+      SELECT * FROM SEMANTIC_VIEW(
+        WEBACCESSIBLE.ANALYST.CAREGIVER_REPORTING
+        DIMENSIONS
+          sessions.user_id,
+          sessions.run_id,
+          sessions.routine_name,
+          sessions.run_kind,
+          sessions.session_started_at
+        METRICS
+          assistance_events.replay_rate,
+          assistance_events.assistance_event_count,
+          assistance_events.model_assisted_step_count
+      )
+      ORDER BY session_started_at DESC
+
+  - name: stuck_and_escalation_detail
+    question: Did anything go wrong or need my help?
+    use_as_onboarding_question: true
+    sql: |
+      SELECT * FROM SEMANTIC_VIEW(
+        WEBACCESSIBLE.ANALYST.CAREGIVER_REPORTING
+        DIMENSIONS
+          sessions.user_id,
+          sessions.run_id,
+          sessions.session_id,
+          sessions.routine_name,
+          sessions.session_started_at
+        METRICS
+          assistance_events.stuck_step_count,
+          assistance_events.wrong_click_step_count,
+          escalations.escalation_count,
+          escalations.delivered_escalation_count
+        WHERE sessions.session_started_at >= DATEADD('day', -7, CURRENT_TIMESTAMP())
+      )
+      ORDER BY session_started_at DESC

@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static-and-build:
+    name: Static checks and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 26.5.1
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: 0.11.24
+          enable-cache: true
+
+      - name: Install locked dependencies
+        run: |
+          uv sync --frozen --all-groups
+          pnpm install --frozen-lockfile
+
+      - name: Check Python lint
+        run: uv run ruff check backend
+
+      - name: Check Python types
+        run: uv run mypy backend
+
+      - name: Check TypeScript types
+        run: pnpm typecheck
+
+      - name: Build production web application
+        run: pnpm build

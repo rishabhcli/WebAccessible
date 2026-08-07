@@ -4,3 +4,15 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .DS_Store
+node_modules/
+web/dist/
+.vite/
+.ruff_cache/
+.mypy_cache/
+.coverage
+data/
+evidence/
+*.sqlite3
+*.db
+.fly/
+.vercel/

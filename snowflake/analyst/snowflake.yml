@@ -1,0 +1,30 @@
+# Independent Snowflake CLI project for the Cortex Analyst caregiver reporting application.
+#
+# This project is deliberately separate from snowflake/snowflake.yml. It declares exactly one
+# entity, in its own schema, on its own stage, so that deploying this application with
+# --replace --prune can never touch the already-live WEBACCESSIBLE.APP.WEBACCESSIBLE_CAREGIVER
+# entity or its WEBACCESSIBLE_STREAMLIT_STAGE.
+#
+# Deploy with:
+#   ./scripts/deploy-cortex-analyst.sh
+
+definition_version: 2
+
+entities:
+  webaccessible_caregiver_analyst:
+    type: streamlit
+    identifier:
+      name: WEBACCESSIBLE_CAREGIVER_ANALYST
+      database: WEBACCESSIBLE
+      schema: ANALYST
+    title: WebAccessible Caregiver Questions
+    comment: >-
+      Cortex Analyst caregiver reporting over the verified WEBACCESSIBLE.ANALYST views.
+      Read-only. Verified sessions only.
+    query_warehouse: WEBACCESSIBLE_WH
+    main_file: streamlit/streamlit_app.py
+    stage: WEBACCESSIBLE_ANALYST_STAGE
+    artifacts:
+      - streamlit/streamlit_app.py
+      - streamlit/environment.yml
+      - streamlit/.streamlit/config.toml

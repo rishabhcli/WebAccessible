@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webaccessible.app/contracts/event-envelope.schema.json",
+  "title": "WebAccessible Event Envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "event_id", "session_id", "user_id", "browserbase_session_id", "page_id", "page_instance_id", "sequence_no", "occurred_at", "origin", "redacted_path", "event_type", "payload"],
+  "properties": {
+    "contract_version": {"const": "1.0"},
+    "event_id": {"type": "string", "format": "uuid"},
+    "session_id": {"type": "string", "format": "uuid"},
+    "user_id": {"type": "string", "minLength": 1, "maxLength": 96},
+    "browserbase_session_id": {"type": "string", "minLength": 1, "maxLength": 160},
+    "page_id": {"type": "string", "minLength": 1, "maxLength": 120},
+    "page_instance_id": {"type": "string", "format": "uuid"},
+    "sequence_no": {"type": "integer", "minimum": 0},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "origin": {"type": "string", "pattern": "^https?://[^/]+$", "maxLength": 240},
+    "redacted_path": {"type": "string", "maxLength": 240},
+    "event_type": {
+      "enum": ["session_started", "page_observed", "navigation_observed", "interaction_observed", "form_progress_observed", "help_requested", "guidance_presented", "guidance_dismissed", "target_resolved", "user_action_observed", "verification_observed", "task_abandoned", "session_ended"]
+    },
+    "payload": {"type": "object", "maxProperties": 64}
+  }
+}

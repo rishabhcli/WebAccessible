@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+
+# Caregiver-facing EverOS memory administration CLI.
+#
+# This wrapper only selects an interpreter and runs the CLI module from the
+# repository root, so the same .env the backend reads is used. It prints no
+# credentials, adds no provider behaviour, and forwards every argument
+# unchanged, including --help.
+
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd -- "${script_dir}/.." && pwd)"
+cd "$repo_root"
+
+module="backend.app.cli.memory"
+
+if [[ -x .venv/bin/python ]]; then
+  exec .venv/bin/python -m "$module" "$@"
+fi
+
+if command -v uv >/dev/null 2>&1; then
+  exec uv run --quiet python -m "$module" "$@"
+fi
+
+if command -v python3 >/dev/null 2>&1; then
+  exec python3 -m "$module" "$@"
+fi
+
+printf 'No Python interpreter was found. Run "make setup" or "uv sync" first.\n' >&2
+exit 127
