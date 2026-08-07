@@ -33,10 +33,10 @@ DEMO_TASKS: Final[tuple[DemoTask, ...]] = (
         id="whole-foods-groceries",
         name="Add groceries to the cart",
         description=(
-            "Fills an Amazon Whole Foods cart with the usual weekly staples, stopping "
-            "before checkout."
+            "Fills an Amazon grocery cart (Whole Foods and Fresh) with the usual weekly "
+            "staples, stopping before checkout."
         ),
-        start_url="https://www.amazon.com/alm/storefront",
+        start_url="https://www.amazon.com/fresh",
         prompt=(
             "Add milk, eggs, bananas, and bread to my Whole Foods cart. "
             "Stop before placing the order."
@@ -47,9 +47,9 @@ DEMO_TASKS: Final[tuple[DemoTask, ...]] = (
         id="haircut-appointment",
         name="Book a haircut",
         description=(
-            "Finds the next open slot at a salon that takes online appointments and holds it."
+            "Finds a nearby salon that takes online appointments and holds the next open slot."
         ),
-        start_url="https://www.greatclips.com/salons/online-check-in",
+        start_url="https://booksy.com/en-us/s/haircut",
         prompt="Book a haircut at the closest salon at the earliest time this week.",
         category="appointment",
     ),
@@ -79,9 +79,8 @@ _ADDITIONAL_ORIGINS: Final = frozenset(
         "https://www.dmv.ca.gov",
         "https://qless.com",
         "https://www.amazon.com",
-        "https://smile.amazon.com",
-        "https://www.greatclips.com",
-        "https://online-booking.greatclips.com",
+        "https://www.wholefoodsmarket.com",
+        "https://booksy.com",
     }
 )
 

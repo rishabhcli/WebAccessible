@@ -203,6 +203,9 @@ class SessionOrchestrator:
                     web_session_id=session.id, user_id=session.user_id, start_url=start_url
                 )
             except Exception as error:
+                # The sanitized message goes to the participant; the cause has to reach the
+                # log or a failure to start is undiagnosable from the outside.
+                logger.exception("Could not attach a managed browser session.")
                 updated = self._transition(
                     session,
                     SessionState.PROVIDER_UNAVAILABLE,

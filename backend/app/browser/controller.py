@@ -68,6 +68,18 @@ async def _title(page: Page) -> str | None:
     return value.strip()[:180] or None
 
 
+def _is_navigation_race(error: Exception) -> bool:
+    """Whether a Playwright failure was caused by the page navigating underneath us."""
+
+    text = str(error)
+    return (
+        "Execution context was destroyed" in text
+        or "Cannot find context with specified id" in text
+        or "Target closed" in text
+        or "frame was detached" in text
+    )
+
+
 def _action_failure(error: Exception) -> str:
     text = str(error).splitlines()[0] if str(error) else type(error).__name__
     if "strict mode violation" in text:
@@ -168,6 +180,11 @@ class BrowserController:
                 await self._install_page(runtime, page)
                 if page.url != start_url:
                     await page.goto(start_url, wait_until="domcontentloaded", timeout=45_000)
+                    # Give a client-side redirect a chance to land before observing.
+                    try:
+                        await page.wait_for_load_state("load", timeout=15_000)
+                    except Exception:
+                        pass
                 await self.snapshot(web_session_id)
             except Exception:
                 await self._maybe_await(self.adapter.terminate(provider_id))
@@ -188,7 +205,7 @@ class BrowserController:
 
     async def snapshot(self, web_session_id: UUID) -> list[ElementCandidate]:
         runtime = self._require(web_session_id)
-        raw = await runtime.page.evaluate(EXTRACT_CANDIDATES_SCRIPT)
+        raw = await self._evaluate_settled(runtime.page, EXTRACT_CANDIDATES_SCRIPT)
         candidates: list[ElementCandidate] = []
         selector_cache: dict[str, str] = {}
         for item in raw or []:
@@ -203,7 +220,12 @@ class BrowserController:
 
     async def highlight(self, web_session_id: UUID, candidate_id: str) -> bool:
         runtime = self._require(web_session_id)
-        return bool(await runtime.page.evaluate(HIGHLIGHT_SCRIPT, candidate_id))
+        try:
+            return bool(await runtime.page.evaluate(HIGHLIGHT_SCRIPT, candidate_id))
+        except Exception as error:
+            if _is_navigation_race(error):
+                return False
+            raise
 
     async def clear_highlight(self, web_session_id: UUID) -> None:
         runtime = self._require(web_session_id)
@@ -455,6 +477,31 @@ class BrowserController:
                 payload=payload,
             )
         )
+
+    @staticmethod
+    async def _evaluate_settled(page: Page, script: str, attempts: int = 4) -> Any:
+        """Evaluate a script, tolerating a navigation that lands mid-evaluation.
+
+        Real sites redirect after `domcontentloaded` — a consent interstitial, a store
+        locator bounce, an auth hop. Each one destroys the execution context and kills an
+        in-flight `evaluate`. Waiting for the new document and retrying is the difference
+        between observing a real page and failing to start at all.
+        """
+
+        last_error: Exception | None = None
+        for attempt in range(attempts):
+            try:
+                return await page.evaluate(script)
+            except Exception as error:
+                if not _is_navigation_race(error):
+                    raise
+                last_error = error
+                try:
+                    await page.wait_for_load_state("domcontentloaded", timeout=15_000)
+                except Exception:
+                    pass
+                await page.wait_for_timeout(250 * (attempt + 1))
+        raise last_error if last_error is not None else RuntimeError("page never settled")
 
     def _require(self, web_session_id: UUID) -> BrowserRuntime:
         runtime = self._runtimes.get(web_session_id)
