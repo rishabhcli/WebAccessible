@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { ArrowRight, BellRing, BookOpenText, Check, CheckCircle2, CircleHelp, Clock3, Copy, RefreshCw, Search, Sparkles, X } from "lucide-react";
+import { ArrowRight, BellRing, Check, CheckCircle2, CircleHelp, Clock3, Copy, HeartHandshake, RefreshCw, Search, Sparkles, X } from "lucide-react";
 import { api } from "../api/client";
 import type { EpisodeAnswer, ParticipantContext, ProactiveReminder, Routine } from "../api/types";
 import { EmptyState } from "../shared/EmptyState";
-import { SkillViewer } from "../skills/SkillViewer";
 
 interface RoutineChooserProps {
   participant: ParticipantContext;
@@ -18,7 +17,6 @@ export function RoutineChooser({ participant, onStart, onStartReminder, starting
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
-  const [selectedSkill, setSelectedSkill] = useState<string>();
   const [resolving, setResolving] = useState(false);
   const [resolved, setResolved] = useState<Routine[]>();
   const [episodeQuery, setEpisodeQuery] = useState("");
@@ -122,17 +120,19 @@ export function RoutineChooser({ participant, onStart, onStartReminder, starting
       <header className="page-heading page-heading--participant">
         <div>
           <span className="eyebrow">Hello, {participant.displayName}</span>
-          <h1>What would you like to do?</h1>
+          <h1>What can I help with today?</h1>
         </div>
         <div className="participant-heading-actions">
-          <div className="caregiver-code">
-            <span>Caregiver session code</span>
-            <code>{participant.userId}</code>
-            <button aria-label="Copy caregiver session code" className="icon-button icon-button--small" onClick={() => void copyCaregiverCode()} title="Copy caregiver session code" type="button">
-              {codeCopied ? <Check aria-hidden="true" size={18} /> : <Copy aria-hidden="true" size={18} />}
-            </button>
+          <details className="caregiver-code">
+            <summary><HeartHandshake aria-hidden="true" size={18} /> Caregiver code</summary>
+            <div>
+              <code>{participant.userId}</code>
+              <button aria-label="Copy caregiver session code" className="icon-button icon-button--small" onClick={() => void copyCaregiverCode()} title="Copy caregiver session code" type="button">
+                {codeCopied ? <Check aria-hidden="true" size={18} /> : <Copy aria-hidden="true" size={18} />}
+              </button>
+            </div>
             <span className="sr-only" role="status">{codeCopied ? "Caregiver session code copied" : ""}</span>
-          </div>
+          </details>
           <button aria-label="Refresh saved routines" className="icon-button" onClick={() => void loadRoutines()} title="Refresh routines" type="button">
             <RefreshCw aria-hidden="true" size={23} />
           </button>
@@ -149,7 +149,7 @@ export function RoutineChooser({ participant, onStart, onStartReminder, starting
             setQuery(event.target.value);
             setResolved(undefined);
           }}
-          placeholder="Search your routines"
+          placeholder="Type a task, like pay the water bill"
           value={query}
         />
         <button className="button button--primary" disabled={!query.trim() || resolving} type="submit">
@@ -177,11 +177,11 @@ export function RoutineChooser({ participant, onStart, onStartReminder, starting
                 <div>
                   <h3>{reminder.routine.name}</h3>
                   <p>{reminder.reason}</p>
-                  <small>Based on {reminder.occurrenceCount} starts. Nothing opens until you choose Start with guidance.</small>
+                  <small>You’ve started this around the same time {reminder.occurrenceCount} times. Nothing opens until you choose Start.</small>
                 </div>
                 <div className="proactive-reminder__actions">
                   <button className="button button--primary" disabled={starting} onClick={() => void onStartReminder(reminder.id)} type="button">
-                    {starting ? "Starting" : "Start with guidance"}
+                    {starting ? "Opening" : "Start this task"}
                     <ArrowRight aria-hidden="true" size={20} />
                   </button>
                   <button aria-label={`Dismiss ${reminder.routine.name} until tomorrow`} className="icon-button" onClick={() => void dismissReminder(reminder.id)} title="Not now" type="button">
@@ -197,8 +197,8 @@ export function RoutineChooser({ participant, onStart, onStartReminder, starting
       <section className="routine-section" aria-labelledby="routine-list-title">
         <div className="section-heading-row">
           <div>
-            <span className="section-kicker"><Sparkles aria-hidden="true" size={19} /> {resolved ? "Matches" : "Your routines"}</span>
-            <h2 id="routine-list-title">{resolved ? "Choose the right task" : "Ready when you are"}</h2>
+            <span className="section-kicker"><Sparkles aria-hidden="true" size={19} /> {resolved ? "Matches" : "Your tasks"}</span>
+            <h2 id="routine-list-title">{resolved ? "Choose the task you meant" : "Choose a task to begin"}</h2>
           </div>
           {resolved ? <button className="text-button" onClick={() => setResolved(undefined)} type="button">Show all</button> : null}
         </div>
@@ -221,18 +221,12 @@ export function RoutineChooser({ participant, onStart, onStartReminder, starting
                 <h3>{routine.name}</h3>
                 {routine.description ? <p>{routine.description}</p> : null}
                 <div className="routine-card__meta">
-                  {routine.replayReady ? <span><CheckCircle2 aria-hidden="true" size={17} /> Replay ready</span> : <span><Clock3 aria-hidden="true" size={17} /> Guidance needed</span>}
-                  {routine.revision ? <span>Revision {routine.revision}</span> : null}
+                  {routine.replayReady ? <span><CheckCircle2 aria-hidden="true" size={17} /> Ready to guide you</span> : <span><Clock3 aria-hidden="true" size={17} /> I’ll guide you</span>}
                 </div>
               </div>
               <div className="routine-card__actions">
-                {routine.skillId ? (
-                  <button aria-label={`Read ${routine.name} routine`} className="icon-button" onClick={() => setSelectedSkill(routine.skillId)} title="Read saved routine" type="button">
-                    <BookOpenText aria-hidden="true" size={21} />
-                  </button>
-                ) : null}
                 <button className="button button--primary" disabled={starting} onClick={() => void onStart(routine)} type="button">
-                  {starting ? "Starting" : "Start"}
+                  {starting ? "Opening" : "Start this task"}
                   <ArrowRight aria-hidden="true" size={20} />
                 </button>
               </div>
@@ -260,7 +254,6 @@ export function RoutineChooser({ participant, onStart, onStartReminder, starting
         ) : null}
       </section>
 
-      {selectedSkill ? <SkillViewer onClose={() => setSelectedSkill(undefined)} skillId={selectedSkill} /> : null}
     </main>
   );
 }

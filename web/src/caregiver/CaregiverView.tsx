@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
+  Activity,
   ArrowLeft,
   BarChart3,
   BookOpenText,
   CheckCircle2,
   Clock3,
   DollarSign,
+  Cloud,
+  Database,
   FileCheck2,
   History,
   KeyRound,
@@ -23,6 +26,7 @@ import type {
   CaregiverSessionSummary,
   CostRunsResponse,
   ParticipantContext,
+  ReadinessSnapshot,
   Routine,
 } from "../api/types";
 import { EmptyState } from "../shared/EmptyState";
@@ -32,11 +36,32 @@ interface CaregiverViewProps {
   context?: ParticipantContext;
   onAuthenticated: (context: ParticipantContext) => void;
   onParticipant: () => void;
+  onRefreshProviders: () => void;
+  readiness?: ReadinessSnapshot;
+  readinessError?: string;
+  readinessLoading: boolean;
 }
 
-export function CaregiverView({ context, onAuthenticated, onParticipant }: CaregiverViewProps) {
+export function CaregiverView({
+  context,
+  onAuthenticated,
+  onParticipant,
+  onRefreshProviders,
+  readiness,
+  readinessError,
+  readinessLoading,
+}: CaregiverViewProps) {
   if (!context) return <CaregiverAccess onAuthenticated={onAuthenticated} onParticipant={onParticipant} />;
-  return <CaregiverDashboard context={context} onParticipant={onParticipant} />;
+  return (
+    <CaregiverDashboard
+      context={context}
+      onParticipant={onParticipant}
+      onRefreshProviders={onRefreshProviders}
+      readiness={readiness}
+      readinessError={readinessError}
+      readinessLoading={readinessLoading}
+    />
+  );
 }
 
 interface CaregiverAccessProps {
@@ -99,9 +124,20 @@ function CaregiverAccess({ onAuthenticated, onParticipant }: CaregiverAccessProp
 interface CaregiverDashboardProps {
   context: ParticipantContext;
   onParticipant: () => void;
+  onRefreshProviders: () => void;
+  readiness?: ReadinessSnapshot;
+  readinessError?: string;
+  readinessLoading: boolean;
 }
 
-function CaregiverDashboard({ context, onParticipant }: CaregiverDashboardProps) {
+function CaregiverDashboard({
+  context,
+  onParticipant,
+  onRefreshProviders,
+  readiness,
+  readinessError,
+  readinessLoading,
+}: CaregiverDashboardProps) {
   const [history, setHistory] = useState<CaregiverHistoryResponse>();
   const [costs, setCosts] = useState<CostRunsResponse>();
   const [routines, setRoutines] = useState<Routine[]>([]);
@@ -185,14 +221,22 @@ function CaregiverDashboard({ context, onParticipant }: CaregiverDashboardProps)
     <main className="caregiver-page" id="main-content">
       <header className="page-heading caregiver-heading">
         <div>
-          <span className="eyebrow">Caregiver workspace</span>
+          <span className="eyebrow">Caregiver console</span>
           <h1>Welcome, {context.displayName}</h1>
+          <p className="caregiver-heading__copy">A clear view of guidance, memory, and verified cloud records.</p>
         </div>
         <div className="heading-actions">
           <button className="button button--quiet" onClick={onParticipant} type="button"><ArrowLeft aria-hidden="true" size={19} /> Participant view</button>
           <button aria-label="Refresh caregiver records" className="icon-button" onClick={() => void load()} title="Refresh records" type="button"><RefreshCw aria-hidden="true" className={loading ? "spin" : undefined} size={22} /></button>
         </div>
       </header>
+
+      <AgentStatusPanel
+        error={readinessError}
+        loading={readinessLoading}
+        onRefresh={onRefreshProviders}
+        readiness={readiness}
+      />
 
       <section className="summary-strip" aria-label="Verified activity summary">
         <SummaryMetric icon={CheckCircle2} label="Completed tasks" unavailable={!history} value={completedCount} />
@@ -316,6 +360,92 @@ function CaregiverDashboard({ context, onParticipant }: CaregiverDashboardProps)
         />
       ) : null}
     </main>
+  );
+}
+
+const agentServices = [
+  {
+    id: "browserbase",
+    name: "Live browser",
+    provider: "Browserbase",
+    description: "Managed browser and participant-controlled Live View",
+    icon: Cloud,
+  },
+  {
+    id: "everos",
+    name: "Memory",
+    provider: "EverOS",
+    description: "Routines, episodes, and participant context",
+    icon: BookOpenText,
+  },
+  {
+    id: "snowflake",
+    name: "Verified records",
+    provider: "Snowflake",
+    description: "Session telemetry, cost, and reporting lineage",
+    icon: Database,
+  },
+  {
+    id: "guidance_model",
+    name: "Guidance",
+    provider: "Snowflake Cortex",
+    description: "Live reasoning for unfamiliar or changed steps",
+    icon: Activity,
+  },
+] as const;
+
+function AgentStatusPanel({
+  readiness,
+  loading,
+  error,
+  onRefresh,
+}: {
+  readiness?: ReadinessSnapshot;
+  loading: boolean;
+  error?: string;
+  onRefresh: () => void;
+}) {
+  const overallReady = Boolean(readiness?.ready) && !error;
+  return (
+    <section className="agent-status" aria-labelledby="agent-status-title">
+      <div className="agent-status__heading">
+        <div>
+          <span className="section-kicker"><Activity aria-hidden="true" size={18} /> Live agent status</span>
+          <h2 id="agent-status-title">Cloud connections</h2>
+          <p>Keys stay on the server. This console shows only safe connection status.</p>
+        </div>
+        <div className="agent-status__overall">
+          <span className={`agent-live-dot ${overallReady ? "agent-live-dot--ready" : ""}`} aria-hidden="true" />
+          <strong>{loading ? "Checking" : overallReady ? "Agent ready" : "Needs attention"}</strong>
+          <button aria-label="Refresh live agent status" className="icon-button icon-button--small" onClick={onRefresh} title="Refresh live agent status" type="button">
+            <RefreshCw aria-hidden="true" className={loading ? "spin" : undefined} size={18} />
+          </button>
+        </div>
+      </div>
+      {error ? <p className="inline-error" role="alert">{error}</p> : null}
+      <div className="agent-status__grid">
+        {agentServices.map((service) => {
+          const capability = readiness?.capabilities.find((item) => item.name === service.id);
+          const ready = Boolean(capability?.configured && capability.reachable && capability.authorized);
+          const status = loading && !capability ? "Checking" : ready ? "Connected" : capability?.configured ? "Attention" : "Unavailable";
+          const Icon = service.icon;
+          return (
+            <article className={`agent-service ${ready ? "agent-service--ready" : ""}`} key={service.id}>
+              <span className="agent-service__icon"><Icon aria-hidden="true" size={24} /></span>
+              <div>
+                <span>{service.name}</span>
+                <strong>{service.provider}</strong>
+                <small>{service.description}</small>
+              </div>
+              <span className={`agent-service__state ${ready ? "agent-service__state--ready" : ""}`}>
+                {status}
+              </span>
+            </article>
+          );
+        })}
+      </div>
+      {readiness?.checkedAt ? <small className="agent-status__checked">Last checked {formatDateTime(readiness.checkedAt)}</small> : null}
+    </section>
   );
 }
 

@@ -27,7 +27,7 @@ has been deployed or that a full live cold/warm qualification run has passed. Se
 ## Architecture
 
 ```text
-React participant and caregiver UI
+Unified React landing, participant, and caregiver UI
                 |
                 v
 FastAPI API, session state, SSE, and transient SQLite outbox
@@ -52,6 +52,13 @@ SQLite file is only short-lived operational state and an outbox, not the sponsor
 memory layer.
 
 ## Implemented Capabilities
+
+**Unified website**
+
+- A simple public landing page routes older adults and caregivers into their dedicated spaces.
+- The older-adult experience uses large controls, plain language, and progressive disclosure.
+- The caregiver console shows safe live readiness for Browserbase, EverOS, Snowflake, and
+  Snowflake Cortex without exposing provider keys to the browser.
 
 **Participant UI**
 
@@ -101,6 +108,7 @@ backend/app/
   persistence/         operational SQLite ledger and outbox
   services/            orchestration, guidance, replay, repair, telemetry, cost
 web/src/
+  landing/             public welcome and role entry points
   setup/               participant setup
   routines/            routine selection
   session/             Live View and guidance experience

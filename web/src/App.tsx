@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { HeartHandshake, LogOut, MousePointer2, UserRound } from "lucide-react";
+import { HeartHandshake, House, LogOut, MousePointer2, UserRound } from "lucide-react";
 import { api } from "./api/client";
 import type { ParticipantContext, ReadinessSnapshot, Routine, SessionSnapshot } from "./api/types";
 import { CaregiverView } from "./caregiver/CaregiverView";
@@ -49,10 +49,9 @@ export default function App() {
   const [readinessError, setReadinessError] = useState<string>();
 
   const activeContext = view === "caregiver" ? caregiver : participant;
-
-  useEffect(() => {
-    api.setAccessToken(activeContext?.accessToken);
-  }, [activeContext?.accessToken]);
+  // Keep the shared API client in sync before child effects start loading protected data.
+  // A passive effect here races dashboard requests after a hard refresh.
+  api.setAccessToken(activeContext?.accessToken);
 
   const loadReadiness = useCallback(async () => {
     setReadinessLoading(true);
@@ -185,8 +184,8 @@ export default function App() {
         <LandingPage hasParticipant={Boolean(participant)} onCaregiver={() => navigate("caregiver")} onStart={() => navigate("participant")} />
       ) : (
         <>
-          <header className="app-header">
-            <button aria-label="WebAccessible participant home" className="brand" onClick={() => navigate("participant")} type="button">
+          <header className={`app-header app-header--${view}`}>
+            <button aria-label="WebAccessible home" className="brand" onClick={() => navigate("landing")} type="button">
               <span className="brand__mark"><MousePointer2 aria-hidden="true" size={23} /></span>
               <span className="brand__word">WebAccessible</span>
             </button>
@@ -194,11 +193,12 @@ export default function App() {
             <div className="app-header__actions">
               {showRoleNavigation ? (
                 <nav aria-label="View" className="role-switcher">
-                  <button aria-current={view === "participant" ? "page" : undefined} className={view === "participant" ? "active" : undefined} onClick={() => navigate("participant")} type="button"><UserRound aria-hidden="true" size={18} /> Participant</button>
+                  <button onClick={() => navigate("landing")} type="button"><House aria-hidden="true" size={18} /> Home</button>
+                  <button aria-current={view === "participant" ? "page" : undefined} className={view === "participant" ? "active" : undefined} onClick={() => navigate("participant")} type="button"><UserRound aria-hidden="true" size={18} /> My tasks</button>
                   <button aria-current={view === "caregiver" ? "page" : undefined} className={view === "caregiver" ? "active" : undefined} onClick={() => navigate("caregiver")} type="button"><HeartHandshake aria-hidden="true" size={18} /> Caregiver</button>
                 </nav>
               ) : null}
-              <ProviderStatus error={readinessError} loading={readinessLoading} onRefresh={() => void loadReadiness()} readiness={readiness} />
+              {view === "caregiver" ? <ProviderStatus error={readinessError} loading={readinessLoading} onRefresh={() => void loadReadiness()} readiness={readiness} /> : null}
               {activeContext && !activeSession ? (
                 <button aria-label="End this signed-in session" className="icon-button" onClick={signOut} title="Sign out" type="button"><LogOut aria-hidden="true" size={21} /></button>
               ) : null}
@@ -206,7 +206,15 @@ export default function App() {
           </header>
 
           {view === "caregiver" ? (
-            <CaregiverView context={caregiver} onAuthenticated={acceptCaregiver} onParticipant={() => navigate("participant")} />
+            <CaregiverView
+              context={caregiver}
+              onAuthenticated={acceptCaregiver}
+              onParticipant={() => navigate("participant")}
+              onRefreshProviders={() => void loadReadiness()}
+              readiness={readiness}
+              readinessError={readinessError}
+              readinessLoading={readinessLoading}
+            />
           ) : activeSession && participant ? (
             <ParticipantSession initial={activeSession.snapshot} initialLiveViewUrl={activeSession.liveViewUrl} onExit={() => setActiveSession(undefined)} participant={participant} />
           ) : participant ? (

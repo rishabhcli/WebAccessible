@@ -58,9 +58,9 @@ export function SetupView({ onComplete, onCaregiver }: SetupViewProps) {
   return (
     <main className="setup-shell" id="main-content">
       <section className="setup-intro" aria-labelledby="setup-title">
-        <span className="section-kicker"><ShieldCheck aria-hidden="true" size={20} /> Private participant setup</span>
-        <h1 id="setup-title">Make each step easy to see.</h1>
-        <p>Choose the reading and voice settings for this browser.</p>
+        <span className="section-kicker"><ShieldCheck aria-hidden="true" size={20} /> Your private setup</span>
+        <h1 id="setup-title">Let’s make this comfortable.</h1>
+        <p>Choose what helps. You can change these settings later.</p>
         <div className="setup-trust-list" aria-label="WebAccessible boundaries">
           <span><Check aria-hidden="true" size={20} /> You make every click.</span>
           <span><Check aria-hidden="true" size={20} /> Passwords stay in the browser.</span>
@@ -70,8 +70,8 @@ export function SetupView({ onComplete, onCaregiver }: SetupViewProps) {
 
       <form className="setup-form" onSubmit={submit}>
         <div className="form-heading">
-          <h2>Set up this browser</h2>
-          <p>Required fields are marked.</p>
+          <h2>Tell us what helps</h2>
+          <p>Only your first name is required.</p>
         </div>
 
         <label className="field">
@@ -88,7 +88,7 @@ export function SetupView({ onComplete, onCaregiver }: SetupViewProps) {
         </label>
 
         <label className="field">
-          <span><Smartphone aria-hidden="true" size={19} /> Caregiver mobile</span>
+          <span><Smartphone aria-hidden="true" size={19} /> Caregiver phone <small>(optional)</small></span>
           <input
             autoComplete="tel"
             inputMode="tel"
@@ -109,7 +109,7 @@ export function SetupView({ onComplete, onCaregiver }: SetupViewProps) {
             </label>
             <label className={readingSize === "larger" ? "selected" : undefined}>
               <input checked={readingSize === "larger"} name="readingSize" onChange={() => setReadingSize("larger")} type="radio" />
-              <span className="larger-sample">Larger</span>
+              <span className="larger-sample">Extra large</span>
             </label>
           </div>
         </fieldset>
@@ -127,8 +127,8 @@ export function SetupView({ onComplete, onCaregiver }: SetupViewProps) {
         <label className="toggle-row">
           <span className="toggle-row__icon"><Brain aria-hidden="true" size={21} /></span>
           <span className="toggle-row__copy">
-            <strong>Remember my activity</strong>
-            <small>Save sanitized task, site, outcome, and timing context; never passwords or form values.</small>
+            <strong>Remember my routines</strong>
+            <small>Remember when and how you usually start a task. Passwords and anything you type are never saved.</small>
           </span>
           <input
             checked={activityMemoryEnabled}
@@ -144,8 +144,8 @@ export function SetupView({ onComplete, onCaregiver }: SetupViewProps) {
         <label className="toggle-row">
           <span className="toggle-row__icon"><BellRing aria-hidden="true" size={21} /></span>
           <span className="toggle-row__copy">
-            <strong>Suggest routines at my usual times</strong>
-            <small>Suggestions appear in this app and only start after you choose Start.</small>
+            <strong>Remind me when it’s usually time</strong>
+            <small>A gentle note appears here. You choose whether to start.</small>
           </span>
           <input
             checked={proactiveRemindersEnabled}
@@ -159,7 +159,7 @@ export function SetupView({ onComplete, onCaregiver }: SetupViewProps) {
         {error ? <p className="form-error" role="alert">{error}</p> : null}
 
         <button className="button button--primary button--large" disabled={submitting || !name.trim()} type="submit">
-          {submitting ? "Connecting" : "Continue"}
+          {submitting ? "Saving" : "Save and show my tasks"}
           <ArrowRight aria-hidden="true" size={22} />
         </button>
 
