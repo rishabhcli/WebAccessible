@@ -15,6 +15,7 @@ from backend.app.integrations.model import CortexGuidanceAdapter
 from backend.app.integrations.snowflake import SnowflakeAdapter
 from backend.app.persistence.repository import OperationalRepository
 from backend.app.services.auth import ParticipantAuthService
+from backend.app.services.autopilot import AutopilotService, CortexActionPlanner
 from backend.app.services.completion import CompletionService
 from backend.app.services.cost_calculator import CostCalculator
 from backend.app.services.event_hub import SessionEventHub
@@ -102,6 +103,18 @@ class AppContainer:
             embedder=self.snowflake if self.settings.snowflake_configured else None,
             embedding_model=self.settings.recall_embedding_model,
         )
+        self.autopilot = AutopilotService(
+            browser=self.browser,
+            planner=CortexActionPlanner(
+                self.snowflake,
+                model=self.settings.guidance_model,
+                max_tokens=self.settings.guidance_model_max_tokens,
+                temperature=self.settings.guidance_model_temperature,
+            ),
+            event_hub=self.event_hub,
+            repository=self.repository,
+            max_steps=self.settings.autopilot_max_steps,
+        )
         self.proactive = ProactiveReminderScheduler(
             orchestrator=self.orchestrator,
             event_hub=self.event_hub,
@@ -115,6 +128,13 @@ class AppContainer:
         self.telemetry: TelemetryService | None = None
         self._readiness_cache: tuple[float, Any] | None = None
         self._readiness_lock = asyncio.Lock()
+        self._background: set[asyncio.Task[Any]] = set()
+
+    def track_background(self, task: asyncio.Task[Any]) -> None:
+        """Hold a reference to a fire-and-forget task so it is not garbage collected."""
+
+        self._background.add(task)
+        task.add_done_callback(self._background.discard)
 
     async def start(self) -> None:
         if self.settings.browserbase_configured:

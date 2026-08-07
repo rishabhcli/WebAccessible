@@ -25,21 +25,38 @@ Supporting docs:
 
 ## Design and product constraints
 
-- Do not design WebAccessible as a fully autonomous browser agent.
-- The user must always perform the actual click/submit actions.
-- “Before irreversible actions” means the tool must pause and surface a clear confirmation path.
-- Cold-run guidance can use models; replay must stay deterministic and selector-first.
-- Never store or handle user passwords.
+**Execution model changed on 2026-08-07.** WebAccessible now performs the task itself. The
+earlier constraint — that the participant must perform every click and submit — has been
+retired by product decision. Treat the rules below as current and the guided-only language
+in `webaccessible-spec.md` §Phase 1–6 as superseded where the two disagree.
+
+- The agent drives the managed browser: clicking, typing, selecting, and navigating.
+- The dashboard reports what the agent *did*; it does not instruct the participant to act.
+- Three boundaries survive autonomy and must not be removed:
+  - **Money, identity, and deletion pause the run** and ask the participant to decide.
+    Reversible steps — adding to a cart, joining a queue, holding an appointment — proceed.
+  - **Passwords are never read or typed.** The run stops and says so.
+  - **Leaving the origin the run started on pauses** for confirmation.
+- Cold-run planning can use models; replay must stay deterministic and selector-first.
+- An action may only target an element from the same sanitized snapshot the planner saw.
 
 ## Interaction model
 
-- Detect “stuck” from observable interaction signals. Separately, an explicit participant opt-in
-  may enable non-blocking routine reminders learned from the participant's own task timing.
-- A proactive reminder may open an allowlisted saved routine only after the participant accepts it;
-  all in-task clicks, typing, submits, and irreversible confirmations remain user-performed.
-- Guidance content is one sentence, then next-step verification.
-- Never flood the user with repeated popups; apply cooldown on dismissed help.
+- Entry is passwordless. There is no participant login and no caregiver access code; the
+  caregiver console opens directly against activity from the same device.
+- An explicit participant opt-in enables routine reminders learned from their own task
+  timing. Reminders are pushed on the participant stream, not polled from one screen.
+- A reminder is a dismissible suggestion. Accepting it is the permission boundary that
+  lets a run start; a lapsed routine is phrased as a lapse and expires rather than nagging.
+- Step narration is one short plain sentence per action, written for the participant —
+  never selectors, IDs, or DOM language.
 - Escalate ambiguity/money-risk situations (including repeated failures) to Susan workflow.
+
+## Curated demos
+
+`backend/app/domain/demos.py` holds the three offered tasks (DMV queue, Whole Foods cart,
+haircut booking) and the origin allowlist. Free-form prompts are fully supported; the
+allowlist only bounds unprompted origin changes mid-run.
 
 ## Data and safety constraints
 

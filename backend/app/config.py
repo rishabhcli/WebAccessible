@@ -39,13 +39,9 @@ class Settings(BaseSettings):
     operational_database_path: Path = Path("data/webaccessible.sqlite3")
     build_commit: str = "local-development"
 
-    demo_target_name: str = "Choose lettuce and tomato"
-    demo_target_url: AnyHttpUrl = AnyHttpUrl(
-        "https://www.w3.org/WAI/ARIA/apg/patterns/checkbox/examples/checkbox/"
-    )
-    demo_fallback_url: AnyHttpUrl = AnyHttpUrl(
-        "https://www.w3.org/WAI/ARIA/apg/patterns/radio/examples/radio/"
-    )
+    demo_target_name: str = "Get in line at the DMV"
+    demo_target_url: AnyHttpUrl = AnyHttpUrl("https://www.dmv.ca.gov/portal/appointments/")
+    demo_fallback_url: AnyHttpUrl = AnyHttpUrl("https://www.greatclips.com/salons/online-check-in")
 
     browserbase_api_key: SecretStr | None = None
     browserbase_region: Literal["us-west-2", "us-east-1", "eu-central-1", "ap-southeast-1"] = (
@@ -82,6 +78,7 @@ class Settings(BaseSettings):
     recall_cache_seconds: float = Field(default=15.0, ge=0, le=300)
     recall_embedding_model: str = "snowflake-arctic-embed-m-v1.5"
 
+    autopilot_max_steps: int = Field(default=24, ge=1, le=120)
     proactive_scan_interval_seconds: float = Field(default=60.0, ge=5, le=3600)
     proactive_max_overdue_intervals: float = Field(default=3.0, ge=1, le=12)
 

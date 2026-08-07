@@ -9,6 +9,7 @@ from typing import Any
 from uuid import uuid4
 
 from backend.app.contracts.models import RoutineSummary
+from backend.app.domain.demos import DEMO_TASKS
 from backend.app.persistence.repository import OperationalRepository
 from backend.app.services.event_hub import SessionEventHub
 from backend.app.services.orchestrator import SessionOrchestrator
@@ -138,13 +139,16 @@ class RoutineResolutionTests(unittest.TestCase):
 
         self.assertEqual(everos.list_calls, 2)
 
-    def test_the_starter_routine_is_always_offered(self) -> None:
+    def test_the_curated_errands_are_always_offered(self) -> None:
         orchestrator = self._orchestrator(_Everos())
 
         routines = asyncio.run(orchestrator.list_routines("margaret"))
 
-        self.assertEqual([routine.source for routine in routines], ["starter"])
-        self.assertEqual(routines[0].start_url, "https://www.w3.org/demo/")
+        self.assertEqual({routine.source for routine in routines}, {"starter"})
+        self.assertEqual(
+            [routine.start_url for routine in routines],
+            [demo.start_url for demo in DEMO_TASKS],
+        )
 
     def test_participant_vocabulary_resolves_a_routine_that_shares_no_words(self) -> None:
         everos = _Everos(
@@ -210,6 +214,30 @@ class RoutineResolutionTests(unittest.TestCase):
         self.assertEqual(embedder.calls, 0)
         self.assertEqual(result.routines[0].name, "Pay water bill")
 
+    def test_filler_words_do_not_count_as_a_routine_match(self) -> None:
+        # "the" appears in "Get in line at the DMV". Treating that as a match used to
+        # suppress the semantic fallback that resolves the phrase correctly.
+        everos = _Everos(
+            routines=[
+                RoutineSummary(
+                    id="skill-electric",
+                    name="Pay electric bill",
+                    start_url="https://power.example/",
+                )
+            ]
+        )
+        embedder = _Embedder([("Pay electric bill", 0.78)])
+        orchestrator = self._orchestrator(
+            everos,
+            embedder=embedder,
+            embedding_model="snowflake-arctic-embed-m-v1.5",
+        )
+
+        result = asyncio.run(orchestrator.resolve_routines("margaret", "the power company"))
+
+        self.assertEqual(embedder.calls, 1)
+        self.assertEqual(result.routines[0].name, "Pay electric bill")
+
     def test_a_weak_embedding_match_is_not_offered(self) -> None:
         everos = _Everos(
             routines=[
@@ -254,7 +282,7 @@ class RoutineResolutionTests(unittest.TestCase):
         self.assertEqual(everos.alias_calls, 0)
         self.assertEqual(embedder.calls, 0)
 
-    def test_an_unreachable_provider_still_offers_the_starter_routine(self) -> None:
+    def test_an_unreachable_provider_still_offers_the_curated_errands(self) -> None:
         class _Broken:
             async def list_routines(self, _user_id: str) -> list[RoutineSummary]:
                 raise RuntimeError("EverOS is unreachable")
@@ -263,8 +291,8 @@ class RoutineResolutionTests(unittest.TestCase):
 
         routines = asyncio.run(orchestrator.list_routines("margaret"))
 
-        self.assertEqual(len(routines), 1)
-        self.assertEqual(routines[0].source, "starter")
+        self.assertEqual(len(routines), len(DEMO_TASKS))
+        self.assertEqual({routine.source for routine in routines}, {"starter"})
 
 
 if __name__ == "__main__":

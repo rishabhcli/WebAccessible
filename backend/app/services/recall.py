@@ -319,9 +319,19 @@ class RecallService:
         episodes: Sequence[Mapping[str, Any]],
         query: str,
     ) -> dict[str, Any] | None:
+        """Return the episode that actually answers the question, or nothing.
+
+        Provider search is recall-oriented and returns whatever it has, so an unrelated
+        episode can come back for a question it cannot answer. Handing that to the phrasing
+        model invites a confident wrong date, so an episode must share a real term with the
+        question to be used at all.
+        """
+
         wanted = _terms(query)
+        if not wanted:
+            return None
         best: dict[str, Any] | None = None
-        best_score = -1.0
+        best_score = 0.0
         for item in episodes:
             text = _episode_text(item)
             if not text:

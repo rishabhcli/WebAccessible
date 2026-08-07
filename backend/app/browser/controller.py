@@ -9,6 +9,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from playwright.async_api import Browser, BrowserContext, Page, Playwright, async_playwright
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from backend.app.browser.candidate_extractor import EXTRACT_CANDIDATES_SCRIPT
 from backend.app.browser.highlighter import CLEAR_HIGHLIGHT_SCRIPT, HIGHLIGHT_SCRIPT
@@ -16,6 +17,7 @@ from backend.app.browser.observer import INSTALL_OBSERVER_SCRIPT
 from backend.app.browser.sanitizer import origin_and_path, redact_payload
 from backend.app.browser.verifier import verify_predicate
 from backend.app.contracts.models import (
+    AgentActionKind,
     BrowserSessionView,
     ElementCandidate,
     EventEnvelope,
@@ -25,6 +27,54 @@ from backend.app.contracts.models import (
 from backend.app.persistence.repository import OperationalRepository
 
 EventSink = Callable[[EventEnvelope], Awaitable[None]]
+
+_TARGETED_ACTIONS = frozenset(
+    {
+        AgentActionKind.CLICK,
+        AgentActionKind.FILL,
+        AgentActionKind.SELECT,
+        AgentActionKind.CHECK,
+        AgentActionKind.PRESS,
+    }
+)
+
+
+@dataclass(frozen=True, slots=True)
+class ActionOutcome:
+    """The result of one attempted page action."""
+
+    performed: bool
+    failure: str | None
+    attempted_at: datetime
+    origin: str | None = None
+    redacted_path: str | None = None
+    title: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PageState:
+    """What the browser chrome shows about the current page."""
+
+    origin: str
+    redacted_path: str
+    title: str | None = None
+
+
+async def _title(page: Page) -> str | None:
+    try:
+        value = await page.title()
+    except Exception:
+        return None
+    return value.strip()[:180] or None
+
+
+def _action_failure(error: Exception) -> str:
+    text = str(error).splitlines()[0] if str(error) else type(error).__name__
+    if "strict mode violation" in text:
+        return "that target matched more than one thing on the page"
+    if "not visible" in text or "not enabled" in text:
+        return "that target was not ready to use"
+    return "the page did not accept that action"
 
 
 @dataclass
@@ -162,6 +212,99 @@ class BrowserController:
     async def verify(self, web_session_id: UUID, predicate: VerificationPredicate) -> bool:
         runtime = self._require(web_session_id)
         return await verify_predicate(runtime.page, predicate)
+
+    async def act(
+        self,
+        web_session_id: UUID,
+        *,
+        action: AgentActionKind,
+        candidate_id: str | None = None,
+        value: str | None = None,
+        url: str | None = None,
+        timeout_ms: int = 15_000,
+    ) -> ActionOutcome:
+        """Perform one bounded action on the managed page.
+
+        Targets are addressed through the CSS path captured in the same snapshot the
+        planner reasoned over, so an action can only land on an element that was actually
+        offered to it. A stale target fails rather than falling back to a guess.
+        """
+
+        runtime = self._require(web_session_id)
+        page = runtime.page
+        started = datetime.now(UTC)
+        selector: str | None = None
+        if action in _TARGETED_ACTIONS:
+            if not candidate_id:
+                return ActionOutcome(False, "no target was supplied for this action", started)
+            selector = runtime.selector_cache.get(candidate_id)
+            if not selector:
+                return ActionOutcome(False, "the target is no longer on the page", started)
+        try:
+            if action is AgentActionKind.CLICK:
+                assert selector is not None
+                await page.click(selector, timeout=timeout_ms)
+            elif action is AgentActionKind.FILL:
+                assert selector is not None
+                await page.fill(selector, value or "", timeout=timeout_ms)
+            elif action is AgentActionKind.SELECT:
+                assert selector is not None
+                await page.select_option(selector, value or "", timeout=timeout_ms)
+            elif action is AgentActionKind.CHECK:
+                assert selector is not None
+                await page.check(selector, timeout=timeout_ms)
+            elif action is AgentActionKind.PRESS:
+                assert selector is not None
+                await page.press(selector, value or "Enter", timeout=timeout_ms)
+            elif action is AgentActionKind.NAVIGATE:
+                if not url:
+                    return ActionOutcome(False, "no address was supplied", started)
+                await page.goto(url, wait_until="domcontentloaded", timeout=45_000)
+            elif action is AgentActionKind.SCROLL:
+                await page.mouse.wheel(0, 600)
+            elif action is AgentActionKind.WAIT:
+                await page.wait_for_timeout(min(timeout_ms, 5_000))
+            else:  # pragma: no cover - the enum is exhaustive
+                return ActionOutcome(False, f"unsupported action {action}", started)
+        except PlaywrightTimeoutError:
+            return ActionOutcome(False, "the page did not respond to that action in time", started)
+        except Exception as error:
+            return ActionOutcome(False, _action_failure(error), started)
+
+        try:
+            await page.wait_for_load_state("domcontentloaded", timeout=8_000)
+        except Exception:
+            # A same-page interaction never changes load state; that is not a failure.
+            pass
+        origin, path = origin_and_path(page.url)
+        return ActionOutcome(
+            True,
+            None,
+            started,
+            origin=origin,
+            redacted_path=path,
+            title=await _title(page),
+        )
+
+    async def page_state(self, web_session_id: UUID) -> PageState:
+        """Return the chrome-visible page state: title, origin, redacted path, history depth."""
+
+        runtime = self._require(web_session_id)
+        page = runtime.page
+        origin, path = origin_and_path(page.url)
+        return PageState(
+            origin=origin,
+            redacted_path=path,
+            title=await _title(page),
+        )
+
+    async def go_back(self, web_session_id: UUID) -> bool:
+        runtime = self._require(web_session_id)
+        try:
+            response = await runtime.page.go_back(wait_until="domcontentloaded", timeout=20_000)
+        except Exception:
+            return False
+        return response is not None
 
     async def current_page_identity(self, web_session_id: UUID) -> tuple[str, UUID, str, str]:
         runtime = self._require(web_session_id)

@@ -11,7 +11,6 @@ import {
   Database,
   FileCheck2,
   History,
-  KeyRound,
   MessageSquareText,
   RefreshCw,
   Send,
@@ -30,6 +29,7 @@ import type {
   Routine,
 } from "../api/types";
 import { EmptyState } from "../shared/EmptyState";
+import { participantUserId } from "../shared/participantIdentity";
 import { SkillViewer } from "../skills/SkillViewer";
 
 interface CaregiverViewProps {
@@ -69,54 +69,51 @@ interface CaregiverAccessProps {
   onParticipant: () => void;
 }
 
+/**
+ * Opens the caregiver console directly.
+ *
+ * There is no code to verify. The console reads the same activity the person on this
+ * device already produced, so a shared secret added a step without adding protection.
+ */
 function CaregiverAccess({ onAuthenticated, onParticipant }: CaregiverAccessProps) {
-  const [name, setName] = useState("");
-  const [accessCode, setAccessCode] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
 
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!name.trim()) return;
+  const open = useCallback(async () => {
     setLoading(true);
     setError(undefined);
     try {
-      const inviteToken = new URLSearchParams(window.location.search).get("invite") ?? undefined;
       onAuthenticated(await api.createParticipantSession({
-        user_id: accessCode.trim() || inviteToken || "",
+        user_id: participantUserId(),
         role: "caregiver",
-        caregiver_name: name.trim(),
-        access_code: accessCode.trim() || undefined,
-        invite_token: inviteToken,
+        caregiver_name: "Caregiver",
       }));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Caregiver access could not be verified.");
+      setError(reason instanceof Error ? reason.message : "The caregiver console could not be opened.");
     } finally {
       setLoading(false);
     }
-  };
+  }, [onAuthenticated]);
+
+  useEffect(() => {
+    void open();
+  }, [open]);
 
   return (
     <main className="caregiver-access" id="main-content">
-      <section className="caregiver-access__identity">
-        <span className="section-kicker"><ShieldCheck aria-hidden="true" size={20} /> Caregiver view</span>
-        <h1>See the record. Send one calm note.</h1>
-        <p>Access is limited to the person and sessions linked to your caregiver account.</p>
-        <button className="text-button" onClick={onParticipant} type="button"><ArrowLeft aria-hidden="true" size={19} /> Participant view</button>
+      <section className="caregiver-access__identity fade-in-up">
+        <span className="section-kicker"><ShieldCheck aria-hidden="true" size={20} /> Caregiver console</span>
+        <h1>{loading ? "Opening the console" : "See the record. Send one calm note."}</h1>
+        <p>Every task, cost, and pause from this device, with nothing to sign in to.</p>
+        {loading ? <div className="spinner spinner--large" role="status" aria-label="Opening the caregiver console" /> : null}
+        {error ? (
+          <>
+            <p className="form-error" role="alert">{error}</p>
+            <button className="button button--primary" onClick={() => void open()} type="button">Try again</button>
+          </>
+        ) : null}
+        <button className="text-button" onClick={onParticipant} type="button"><ArrowLeft aria-hidden="true" size={19} /> Back to tasks</button>
       </section>
-      <form className="caregiver-access__form" onSubmit={submit}>
-        <h2>Caregiver access</h2>
-        <label className="field">
-          <span><UserRound aria-hidden="true" size={19} /> Your name</span>
-          <input autoComplete="name" onChange={(event) => setName(event.target.value)} required value={name} />
-        </label>
-        <label className="field">
-          <span><KeyRound aria-hidden="true" size={19} /> Session code</span>
-          <input autoComplete="one-time-code" onChange={(event) => setAccessCode(event.target.value)} value={accessCode} />
-        </label>
-        {error ? <p className="form-error" role="alert">{error}</p> : null}
-        <button className="button button--primary button--large" disabled={loading || !name.trim() || (!accessCode.trim() && !new URLSearchParams(window.location.search).get("invite"))} type="submit">{loading ? "Verifying" : "Open caregiver view"}</button>
-      </form>
     </main>
   );
 }

@@ -1,10 +1,10 @@
 # WebAccessible
 
-WebAccessible is a caregiver-supported browser guidance application for older adults. It
-detects observable stuck moments, presents one short next step, highlights the relevant
-control, and waits for the participant to perform the real action. Verified teach runs are
-stored as readable EverOS skills and later replayed selector-first without a model call when
-the saved route still matches.
+WebAccessible is a caregiver-supported browser agent for older adults. Ask it for an errand
+in your own words and it opens a managed cloud browser, does the task, and tells you each
+step in plain language as it goes — pausing only for money, identity, deletion, or a
+password. Verified runs are stored as readable EverOS skills and later replayed
+selector-first without a model call when the saved route still matches.
 
 The application code is now present across the React UI, FastAPI service, Browserbase bridge,
 EverOS memory adapter, Snowflake telemetry and Cortex adapters, Snowflake migrations, and
@@ -14,14 +14,19 @@ has been deployed or that a full live cold/warm qualification run has passed. Se
 
 ## Product Boundaries
 
-- The participant performs every target-page click, keystroke, and submit in Browserbase
-  interactive Live View.
-- The backend may observe sanitized page state, highlight a target, and verify the resulting
-  state. It exposes no autonomous Browserbase Agent path.
-- Money movement, identity submission, and deletion pause before the irreversible action.
+WebAccessible completes the task itself in a managed Browserbase session and reports each
+step in plain language. The participant watches rather than clicks.
+
+- The agent drives the page over CDP: clicking, typing, selecting, and navigating. Every
+  target must come from the same sanitized snapshot the planner reasoned over.
+- **Money movement, identity submission, and deletion pause the run** and ask the
+  participant to decide. Reversible steps — adding to a cart, joining a queue, holding an
+  appointment — proceed without interruption.
+- **Passwords are never read or typed.** The run stops and hands the page over.
+- **Leaving the origin the run started on pauses** for confirmation.
+- Entry is passwordless: no participant login, and no caregiver access code.
 - Replay is deterministic and selector-first. A matching verified replay step creates no
   guidance-model call.
-- Passwords are neither requested nor stored.
 - Demo and production modes do not fall back to local provider fixtures.
 
 ## Architecture
@@ -64,9 +69,14 @@ memory layer.
 **Participant UI**
 
 - Automatic passwordless guest entry with large text and voice guidance defaults.
-- Routine chooser backed by EverOS plus a reviewed W3C starter task.
-- Embedded Browserbase Live View with one-step guidance, target highlighting, help, dismiss,
-  voice output, retry, and stop controls.
+- Three ready errands — DMV virtual queue, Amazon Whole Foods cart, and a salon
+  appointment — plus a free-form prompt for anything else.
+- A browser-shaped dashboard: familiar tab and address chrome around the live Browserbase
+  page, with the narrated steps the agent took beside it.
+- Conversational recall ("when's the DMV appointment you booked?") answered from EverOS
+  episode memory and the local activity ledger, phrased by Cortex, with a dated fallback
+  when Cortex is unavailable.
+- Pushed routine reminders, including lapsed ones ("you last did this about a month ago").
 - Live session state over authenticated server-sent events.
 - Explicit completed, prepared, safety-paused, escalated, failed, and provider-unavailable
   states.

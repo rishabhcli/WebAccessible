@@ -233,6 +233,69 @@ class RecallServiceTests(unittest.TestCase):
         self.assertEqual(answer.provider_episode_id, "episode-1")
         self.assertIn("booked the DMV appointment", answer.answer)
 
+    def test_an_unrelated_episode_is_not_used_to_answer(self) -> None:
+        # Provider search returns whatever it holds. An episode about profile setup must
+        # never be dressed up as an answer about an appointment.
+        everos = _Everos(
+            {
+                "episodes": [
+                    {
+                        "id": "episode-setup",
+                        "summary": (
+                            "On August 7, 2026 the user reviewed the WebAccessible participant "
+                            "setup and confirmed stable profile preferences."
+                        ),
+                        "timestamp": "2026-08-07T19:54:16+00:00",
+                    }
+                ],
+                "atomic_facts": [],
+                "foresights": [],
+                "agent_skills": [],
+            }
+        )
+        cortex = _Cortex("Your DMV appointment is on Friday, August 7th, 2026.")
+        service = self._service(everos, cortex)
+
+        answer = asyncio.run(
+            service.answer(
+                "margaret",
+                "when is the DMV appointment",
+                now=datetime(2026, 8, 8, tzinfo=UTC),
+            )
+        )
+
+        self.assertFalse(answer.found)
+        self.assertIn("do not have a remembered record", answer.answer)
+        self.assertEqual(cortex.prompts, [])
+
+    def test_a_related_episode_is_still_used(self) -> None:
+        everos = _Everos(
+            {
+                "episodes": [
+                    {
+                        "id": "episode-dmv",
+                        "summary": "Aug 3: joined the DMV line and got a confirmation number.",
+                        "timestamp": "2026-08-03T17:30:00+00:00",
+                    }
+                ],
+                "atomic_facts": [],
+                "foresights": [],
+                "agent_skills": [],
+            }
+        )
+        service = self._service(everos, _Cortex(None))
+
+        answer = asyncio.run(
+            service.answer(
+                "margaret",
+                "when did I join the DMV line",
+                now=datetime(2026, 8, 5, tzinfo=UTC),
+            )
+        )
+
+        self.assertTrue(answer.found)
+        self.assertEqual(answer.provider_episode_id, "episode-dmv")
+
     def test_the_next_expected_time_is_returned_with_the_answer(self) -> None:
         pattern = RoutinePattern(
             task_id=ActivityMemoryService._task_id("Book haircut"),  # noqa: SLF001

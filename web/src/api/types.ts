@@ -68,6 +68,65 @@ export interface ProactiveReminder {
   permissionRequired: true;
 }
 
+export interface DemoTask {
+  id: string;
+  name: string;
+  description: string;
+  startUrl: string;
+  prompt: string;
+  category: "appointment" | "shopping" | "government";
+}
+
+export type AgentActionKind =
+  | "click"
+  | "fill"
+  | "select"
+  | "check"
+  | "press"
+  | "navigate"
+  | "scroll"
+  | "wait"
+  | "done"
+  | "ask";
+
+export type AgentStepStatus = "running" | "done" | "failed" | "blocked";
+
+export interface AgentStep {
+  stepNo: number;
+  action: AgentActionKind;
+  narration: string;
+  status: AgentStepStatus;
+  detail?: string;
+  pageTitle?: string;
+  origin?: string;
+  occurredAt?: string;
+}
+
+export type AgentRunState =
+  | "running"
+  | "needs_confirmation"
+  | "completed"
+  | "failed"
+  | "stopped";
+
+export interface AgentRun {
+  sessionId: string;
+  taskName: string;
+  state: AgentRunState;
+  steps: AgentStep[];
+  pageTitle?: string;
+  origin?: string;
+  redactedPath?: string;
+  pendingConfirmation?: SafetyPresentation;
+  summary?: string;
+}
+
+export interface AgentRunInput {
+  prompt: string;
+  demo_id?: string;
+  start_url?: string;
+}
+
 export interface SkillDocument {
   id: string;
   skillKey?: string;

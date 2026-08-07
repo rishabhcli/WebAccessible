@@ -1,9 +1,16 @@
 import type {
+  AgentActionKind,
+  AgentRun,
+  AgentRunInput,
+  AgentRunState,
+  AgentStep,
+  AgentStepStatus,
   CapabilityReadiness,
   CaregiverPanelNote,
   CaregiverHistoryResponse,
   CaregiverNote,
   CostRunsResponse,
+  DemoTask,
   EpisodeAnswer,
   ParticipantContext,
   ParticipantSessionInput,
@@ -13,6 +20,7 @@ import type {
   Routine,
   SessionCreateInput,
   SessionEventInput,
+  SafetyClassification,
   SessionPhase,
   SessionSnapshot,
   SkillDocument,
@@ -221,6 +229,73 @@ export function normalizeSession(value: unknown, commandValue?: unknown): Sessio
   };
 }
 
+function normalizeDemo(value: unknown): DemoTask | undefined {
+  if (!isRecord(value)) return undefined;
+  const id = stringValue(value, "id");
+  const name = stringValue(value, "name");
+  const startUrl = stringValue(value, "start_url");
+  const prompt = stringValue(value, "prompt");
+  const category = stringValue(value, "category");
+  if (!id || !name || !startUrl || !prompt) return undefined;
+  if (category !== "appointment" && category !== "shopping" && category !== "government") return undefined;
+  return { id, name, description: stringValue(value, "description") ?? "", startUrl, prompt, category };
+}
+
+const AGENT_ACTIONS = new Set<AgentActionKind>([
+  "click", "fill", "select", "check", "press", "navigate", "scroll", "wait", "done", "ask",
+]);
+const AGENT_STATUSES = new Set<AgentStepStatus>(["running", "done", "failed", "blocked"]);
+const AGENT_RUN_STATES = new Set<AgentRunState>([
+  "running", "needs_confirmation", "completed", "failed", "stopped",
+]);
+
+function normalizeAgentStep(value: unknown): AgentStep | undefined {
+  if (!isRecord(value)) return undefined;
+  const stepNo = numberValue(value, "step_no");
+  const narration = stringValue(value, "narration");
+  const action = stringValue(value, "action") as AgentActionKind | undefined;
+  const status = stringValue(value, "status") as AgentStepStatus | undefined;
+  if (stepNo === undefined || !narration || !action || !status) return undefined;
+  if (!AGENT_ACTIONS.has(action) || !AGENT_STATUSES.has(status)) return undefined;
+  return {
+    stepNo,
+    action,
+    narration,
+    status,
+    detail: stringValue(value, "detail"),
+    pageTitle: stringValue(value, "page_title"),
+    origin: stringValue(value, "origin"),
+    occurredAt: stringValue(value, "occurred_at"),
+  };
+}
+
+function normalizeAgentRun(value: unknown): AgentRun {
+  if (!isRecord(value)) throw new ApiError("The run response was not valid.", 502, "invalid_response");
+  const sessionId = stringValue(value, "session_id");
+  if (!sessionId) throw new ApiError("The run response did not include a session.", 502, "invalid_response");
+  const rawState = stringValue(value, "state") as AgentRunState | undefined;
+  const rawSafety = isRecord(value.pending_confirmation) ? value.pending_confirmation : undefined;
+  return {
+    sessionId,
+    taskName: stringValue(value, "task_name") ?? "Your task",
+    state: rawState && AGENT_RUN_STATES.has(rawState) ? rawState : "running",
+    steps: (Array.isArray(value.steps) ? value.steps : [])
+      .map(normalizeAgentStep)
+      .filter((item): item is AgentStep => Boolean(item)),
+    pageTitle: stringValue(value, "page_title"),
+    origin: stringValue(value, "origin"),
+    redactedPath: stringValue(value, "redacted_path"),
+    pendingConfirmation: rawSafety
+      ? {
+          classification: (stringValue(rawSafety, "classification") ?? "unknown") as SafetyClassification,
+          message: stringValue(rawSafety, "message"),
+          actionDescription: stringValue(rawSafety, "irreversible_action"),
+        }
+      : undefined,
+    summary: stringValue(value, "summary"),
+  };
+}
+
 function normalizeRoutine(value: unknown): Routine | undefined {
   if (!isRecord(value)) return undefined;
   const id = stringValue(value, "routine_id", "skill_id", "id");
@@ -402,6 +477,56 @@ class WebAccessibleApi {
     const payload = await this.request<unknown>(`/v1/routines${suffix}`);
     const items = Array.isArray(payload) ? payload : isRecord(payload) && Array.isArray(payload.routines) ? payload.routines : [];
     return items.map(normalizeRoutine).filter((item): item is Routine => Boolean(item));
+  }
+
+  async listDemos(): Promise<DemoTask[]> {
+    const payload = await this.request<unknown>("/v1/demos");
+    const items = Array.isArray(payload) ? payload : [];
+    return items.map(normalizeDemo).filter((item): item is DemoTask => Boolean(item));
+  }
+
+  async startAgentRun(input: AgentRunInput): Promise<AgentRun> {
+    return normalizeAgentRun(await this.request<unknown>("/v1/agent-runs", {
+      method: "POST",
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: JSON.stringify(input),
+    }));
+  }
+
+  async agentRun(sessionId: string): Promise<AgentRun> {
+    return normalizeAgentRun(await this.request<unknown>(`/v1/agent-runs/${encodeURIComponent(sessionId)}`));
+  }
+
+  async confirmAgentRun(sessionId: string, approved: boolean): Promise<AgentRun> {
+    return normalizeAgentRun(await this.request<unknown>(`/v1/agent-runs/${encodeURIComponent(sessionId)}:confirm`, {
+      method: "POST",
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: JSON.stringify({ approved }),
+    }));
+  }
+
+  async stopAgentRun(sessionId: string): Promise<AgentRun> {
+    return normalizeAgentRun(await this.request<unknown>(`/v1/agent-runs/${encodeURIComponent(sessionId)}:stop`, {
+      method: "POST",
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+    }));
+  }
+
+  /** Follow one autonomous run, receiving each narrated step as it happens. */
+  async streamAgentRun(
+    sessionId: string,
+    signal: AbortSignal,
+    onRun: (run: AgentRun) => void,
+  ): Promise<void> {
+    await this.consumeStream(
+      `/v1/sessions/${encodeURIComponent(sessionId)}${STREAM_PATH}`,
+      signal,
+      (parsed) => {
+        if (!isRecord(parsed)) return;
+        if (stringValue(parsed, "type") !== "agent_run") return;
+        if (isRecord(parsed.run)) onRun(normalizeAgentRun(parsed.run));
+      },
+    );
   }
 
   async listReminders(): Promise<ProactiveReminder[]> {

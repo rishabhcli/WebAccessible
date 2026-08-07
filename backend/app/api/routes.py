@@ -26,7 +26,11 @@ from sse_starlette.sse import EventSourceResponse
 
 from backend.app.config import RuntimeMode as ConfigRuntimeMode
 from backend.app.contracts.models import (
+    AgentConfirmRequest,
+    AgentRunRequest,
+    AgentRunView,
     CaregiverDashboard,
+    DemoTask,
     EpisodeAnswer,
     EscalationNoteRequest,
     EscalationView,
@@ -58,11 +62,16 @@ from backend.app.contracts.models import (
     TaskStartRequest,
 )
 from backend.app.dependencies import AppContainer
+from backend.app.domain.demos import DEMO_TASKS, DEMO_TASKS_BY_ID
 from backend.app.integrations.everos import EverOSErrorCode, EverOSProviderError
 from backend.app.services.auth import AuthenticatedParticipant
 from backend.app.services.event_hub import user_topic
 
 router = APIRouter()
+
+# How long the passwordless entry path will wait on the EverOS profile upsert before
+# handing the session over and letting the write finish on its own.
+PROFILE_SYNC_BUDGET_SECONDS = 3.0
 
 
 def container(request: Request) -> AppContainer:
@@ -207,26 +216,37 @@ async def create_participant_session(
     body: ParticipantSessionRequest,
     app: Annotated[AppContainer, Depends(container)],
 ) -> ParticipantSessionResponse:
-    if app.settings.everos_configured and body.role == ParticipantRole.USER:
-        try:
-            await app.everos.update_profile(
-                body.user_id,
-                {
-                    "participant_name": body.participant_name,
-                    "reading_size": body.reading_size,
-                    "voice_enabled": body.voice_enabled,
-                    "timezone": body.timezone,
-                    "caregiver_mobile": body.caregiver_mobile,
-                    "activity_memory_enabled": body.activity_memory_enabled,
-                    "proactive_reminders_enabled": body.proactive_reminders_enabled,
-                },
-            )
-        except Exception as error:
-            raise HTTPException(
-                status_code=503,
-                detail="EverOS could not save the participant setup, so setup was not completed.",
-            ) from error
-    return app.auth.create(body)
+    """Open a session with no password and no code.
+
+    Because entry is passwordless, this is the very first request the app makes. The
+    EverOS profile upsert behind it is several sequential provider calls, so it is
+    bounded and, if slow, finished in the background: the session is issued either way
+    and the response states plainly whether preferences reached memory.
+    """
+
+    session = app.auth.create(body)
+    if not (app.settings.everos_configured and body.role == ParticipantRole.USER):
+        return session
+
+    preferences = {
+        "participant_name": body.participant_name,
+        "reading_size": body.reading_size,
+        "voice_enabled": body.voice_enabled,
+        "timezone": body.timezone,
+        "caregiver_mobile": body.caregiver_mobile,
+        "activity_memory_enabled": body.activity_memory_enabled,
+        "proactive_reminders_enabled": body.proactive_reminders_enabled,
+    }
+    write = asyncio.create_task(app.everos.update_profile(body.user_id, preferences))
+    try:
+        await asyncio.wait_for(asyncio.shield(write), timeout=PROFILE_SYNC_BUDGET_SECONDS)
+    except TimeoutError:
+        # Still in flight. Let it finish without holding the person at a blank screen.
+        app.track_background(write)
+        return session.model_copy(update={"profile_sync": "pending"})
+    except Exception:
+        return session.model_copy(update={"profile_sync": "unavailable"})
+    return session.model_copy(update={"profile_sync": "synced"})
 
 
 @router.post("/v1/sessions", response_model=SessionView, status_code=status.HTTP_201_CREATED)
@@ -419,6 +439,101 @@ async def participant_stream(
             await app.proactive.detach(who.user_id)
 
     return EventSourceResponse(events(), headers={"Cache-Control": "no-store"})
+
+
+@router.get("/v1/demos", response_model=list[DemoTask])
+async def list_demos() -> list[DemoTask]:
+    """Return the curated tasks offered as one-tap demos."""
+
+    return list(DEMO_TASKS)
+
+
+@router.post(
+    "/v1/agent-runs",
+    response_model=AgentRunView,
+    status_code=status.HTTP_201_CREATED,
+)
+async def start_agent_run(
+    body: AgentRunRequest,
+    who: Annotated[AuthenticatedParticipant, Depends(participant)],
+    app: Annotated[AppContainer, Depends(container)],
+) -> AgentRunView:
+    """Open a managed browser and run the task, reporting each step as it happens."""
+
+    demo = DEMO_TASKS_BY_ID.get(body.demo_id) if body.demo_id else None
+    if body.demo_id and demo is None:
+        raise HTTPException(status_code=404, detail="That demo is not available")
+    start_url = str(body.start_url) if body.start_url else (demo.start_url if demo else None)
+    if start_url is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Choose one of the ready tasks, or give a web address to start from.",
+        )
+    task_name = demo.name if demo else body.prompt[:120]
+    session = app.orchestrator.create_session(
+        user_id=who.user_id,
+        participant_session_id=who.participant_session_id,
+        mode=SessionMode.COLD_TEACH,
+        task_name=task_name,
+        task_intent=body.prompt,
+        skill_id=None,
+        start_url=start_url,
+    )
+    try:
+        await app.orchestrator.attach_browser(session.id, start_url)
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    return await app.autopilot.start(
+        session_id=session.id,
+        user_id=who.user_id,
+        task_name=task_name,
+        prompt=body.prompt,
+        start_url=start_url,
+    )
+
+
+@router.get("/v1/agent-runs/{session_id}", response_model=AgentRunView)
+async def get_agent_run(
+    session_id: UUID,
+    who: Annotated[AuthenticatedParticipant, Depends(participant)],
+    app: Annotated[AppContainer, Depends(container)],
+) -> AgentRunView:
+    require_session(session_id, who, app)
+    try:
+        return app.autopilot.view(session_id)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="That run is no longer active") from error
+
+
+@router.post("/v1/agent-runs/{session_id}:confirm", response_model=AgentRunView)
+async def confirm_agent_run(
+    session_id: UUID,
+    body: AgentConfirmRequest,
+    who: Annotated[AuthenticatedParticipant, Depends(participant)],
+    app: Annotated[AppContainer, Depends(container)],
+) -> AgentRunView:
+    """Resolve a pause the run stopped on. Approval hands that one action back to you."""
+
+    require_session(session_id, who, app)
+    try:
+        return await app.autopilot.confirm(session_id, approved=body.approved)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="That run is no longer active") from error
+
+
+@router.post("/v1/agent-runs/{session_id}:stop", response_model=AgentRunView)
+async def stop_agent_run(
+    session_id: UUID,
+    who: Annotated[AuthenticatedParticipant, Depends(participant)],
+    app: Annotated[AppContainer, Depends(container)],
+) -> AgentRunView:
+    require_session(session_id, who, app)
+    try:
+        view = await app.autopilot.stop(session_id)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="That run is no longer active") from error
+    await app.orchestrator.stop_browser(session_id, "participant_stop")
+    return view
 
 
 @router.get("/v1/routines", response_model=list[RoutineSummary])

@@ -87,6 +87,11 @@ class ParticipantSessionResponse(StrictModel):
     expires_at: datetime
     user_id: str
     role: ParticipantRole
+    # Whether the reviewed preferences reached EverOS profile memory. Reported rather
+    # than assumed, so a provider outage is visible instead of silently swallowed.
+    profile_sync: Literal["not_applicable", "synced", "pending", "unavailable"] = (
+        "not_applicable"
+    )
 
 
 class SessionMode(StrEnum):
@@ -459,6 +464,98 @@ class ReviewedBillUploadResponse(StrictModel):
     object_key: str
     indexing_status: Literal["awaiting_memory_add"] = "awaiting_memory_add"
     reviewed: Literal[True] = True
+
+
+class AgentActionKind(StrEnum):
+    """The bounded set of things the agent may do to a page."""
+
+    CLICK = "click"
+    FILL = "fill"
+    SELECT = "select"
+    CHECK = "check"
+    PRESS = "press"
+    NAVIGATE = "navigate"
+    SCROLL = "scroll"
+    WAIT = "wait"
+    DONE = "done"
+    ASK = "ask"
+
+
+class AgentStepStatus(StrEnum):
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
+    BLOCKED = "blocked"
+
+
+class AgentPlan(StrictModel):
+    """One planned action, with the plain sentence shown to the participant."""
+
+    action: AgentActionKind
+    candidate_id: str | None = Field(default=None, max_length=96)
+    value: str | None = Field(default=None, max_length=320)
+    url: str | None = Field(default=None, max_length=2048)
+    # Written for the person watching, not for a developer: "Typing your zip code".
+    narration: str = Field(min_length=1, max_length=140)
+    safety_classification: SafetyClassification = SafetyClassification.SAFE
+    confidence: float = Field(default=0.0, ge=0, le=1)
+    task_complete: bool = False
+
+
+class AgentStep(StrictModel):
+    """A narrated step in the run, as shown in the activity panel."""
+
+    step_no: int = Field(ge=1)
+    action: AgentActionKind
+    narration: str = Field(min_length=1, max_length=140)
+    status: AgentStepStatus
+    detail: str | None = Field(default=None, max_length=240)
+    page_title: str | None = Field(default=None, max_length=180)
+    origin: str | None = Field(default=None, max_length=240)
+    occurred_at: datetime = Field(default_factory=utc_now)
+
+
+class AgentRunState(StrEnum):
+    RUNNING = "running"
+    NEEDS_CONFIRMATION = "needs_confirmation"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    STOPPED = "stopped"
+
+
+class AgentRunView(StrictModel):
+    """The autonomous run as the dashboard renders it."""
+
+    session_id: UUID
+    task_name: str
+    state: AgentRunState
+    steps: list[AgentStep] = Field(default_factory=list)
+    page_title: str | None = None
+    origin: str | None = None
+    redacted_path: str | None = None
+    pending_confirmation: SafetyPresentation | None = None
+    summary: str | None = Field(default=None, max_length=320)
+
+
+class DemoTask(StrictModel):
+    """A curated task with a reviewed, allowlisted starting point."""
+
+    id: str
+    name: str
+    description: str
+    start_url: str
+    prompt: str
+    category: Literal["appointment", "shopping", "government"]
+
+
+class AgentConfirmRequest(StrictModel):
+    approved: bool
+
+
+class AgentRunRequest(StrictModel):
+    prompt: str = Field(min_length=1, max_length=320)
+    demo_id: str | None = Field(default=None, max_length=64)
+    start_url: HttpUrl | None = None
 
 
 class RoutineSummary(StrictModel):

@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -42,6 +43,7 @@ from backend.app.contracts.models import (
     VerificationPredicate,
     VerificationType,
 )
+from backend.app.domain.demos import DEMO_TASKS
 from backend.app.domain.safety import SafetyPolicy
 from backend.app.domain.sessions import ensure_transition
 from backend.app.domain.skills import parse_skill_markdown, provider_value
@@ -57,6 +59,25 @@ from backend.app.services.route_recorder import RouteRecorder
 from backend.app.services.stuck_detector import StuckDetector, StuckReason
 
 logger = logging.getLogger(__name__)
+
+_FILLER_WORDS: frozenset[str] = frozenset(
+    {
+        "the", "a", "an", "my", "our", "your", "for", "and", "or", "of", "to", "with",
+        "on", "at", "in", "get", "got", "please", "want", "need", "book", "make", "do",
+        "line", "online", "new", "next", "some", "from", "into", "that", "this",
+    }
+)
+
+
+def _content_words(text: str) -> set[str]:
+    """Return the words in a phrase that actually carry the topic."""
+
+    return {
+        word
+        for word in re.findall(r"[a-z0-9]+", text.casefold())
+        if len(word) > 2 and word not in _FILLER_WORDS
+    }
+
 
 
 @dataclass
@@ -458,15 +479,21 @@ class SessionOrchestrator:
                 ]
             except Exception:
                 routines = []
-            starter = RoutineSummary(
-                id="starter:w3c-sandwich",
-                name=self.demo_target_name,
-                description="A harmless public W3C task that can be completed and remembered.",
-                start_url=self.demo_target_url,
-                source="starter",
-            )
-            if not any(item.start_url == starter.start_url for item in routines):
-                routines.append(starter)
+            # Offer the curated errands whenever a participant has no confirmed routine
+            # for them yet, so a first-time run has somewhere real to start.
+            known = {item.start_url for item in routines}
+            for demo in DEMO_TASKS:
+                if demo.start_url in known:
+                    continue
+                routines.append(
+                    RoutineSummary(
+                        id=f"starter:{demo.id}",
+                        name=demo.name,
+                        description=demo.description,
+                        start_url=demo.start_url,
+                        source="starter",
+                    )
+                )
             if self.routine_cache_seconds > 0:
                 self._routine_cache[user_id] = (
                     monotonic() + self.routine_cache_seconds,
@@ -547,15 +574,16 @@ class SessionOrchestrator:
                     vocabulary = " ".join(str(alias) for alias in aliases[:6])
             except Exception:
                 vocabulary = ""
-        words = {word.casefold() for word in f"{query} {vocabulary}".split() if len(word) > 2}
+        # Match on meaningful tokens only. Substring matching on filler words made
+        # "the power company" appear to match "Get in line at the DMV", which then
+        # suppressed the semantic fallback that would have resolved it correctly.
+        words = _content_words(f"{query} {vocabulary}")
         scored = sorted(
             routines,
-            key=lambda item: sum(word in item.name.casefold() for word in words),
+            key=lambda item: len(words & _content_words(item.name)),
             reverse=True,
         )
-        if scored and any(
-            word in scored[0].name.casefold() for word in words
-        ):
+        if scored and words & _content_words(scored[0].name):
             return scored[:3]
         semantic = await self._semantic_routines(query, routines)
         return semantic or scored[:3]

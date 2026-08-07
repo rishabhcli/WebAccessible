@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HeartHandshake, House, LogOut, MousePointer2, UserRound } from "lucide-react";
 import { api } from "./api/client";
-import type { ParticipantContext, ReadinessSnapshot, Routine, SessionSnapshot } from "./api/types";
+import type { AgentRun, ParticipantContext, ReadinessSnapshot } from "./api/types";
+import { AgentDashboard } from "./agent/AgentDashboard";
+import { TaskLauncher } from "./agent/TaskLauncher";
 import { CaregiverView } from "./caregiver/CaregiverView";
 import { LandingPage } from "./landing/LandingPage";
-import { RoutineChooser } from "./routines/RoutineChooser";
-import { ParticipantSession } from "./session/ParticipantSession";
 import { ProviderStatus } from "./shared/ProviderStatus";
 
 const PARTICIPANT_STORAGE_KEY = "webaccessible.participant-session";
@@ -13,11 +13,6 @@ const CAREGIVER_STORAGE_KEY = "webaccessible.caregiver-session";
 const PARTICIPANT_USER_ID_KEY = "webaccessible.participantUserId";
 
 type AppView = "landing" | "participant" | "caregiver";
-
-interface ActiveSession {
-  snapshot: SessionSnapshot;
-  liveViewUrl?: string;
-}
 
 function readContext(key: string): ParticipantContext | undefined {
   try {
@@ -49,9 +44,7 @@ export default function App() {
   const [view, setView] = useState<AppView>(initialView);
   const [participant, setParticipant] = useState<ParticipantContext | undefined>(() => readContext(PARTICIPANT_STORAGE_KEY));
   const [caregiver, setCaregiver] = useState<ParticipantContext | undefined>(() => readContext(CAREGIVER_STORAGE_KEY));
-  const [activeSession, setActiveSession] = useState<ActiveSession>();
-  const [starting, setStarting] = useState(false);
-  const [startError, setStartError] = useState<string>();
+  const [activeRun, setActiveRun] = useState<AgentRun>();
   const [participantLoading, setParticipantLoading] = useState(false);
   const [participantError, setParticipantError] = useState<string>();
   const [readiness, setReadiness] = useState<ReadinessSnapshot>();
@@ -148,75 +141,8 @@ export default function App() {
     api.setAccessToken(undefined);
   };
 
-  const startRoutine = async (routine: Routine) => {
-    if (!participant) return;
-    setStarting(true);
-    setStartError(undefined);
-    let created: SessionSnapshot | undefined;
-    try {
-      api.setAccessToken(participant.accessToken);
-      created = await api.startTask(routine.id, participant.participantSessionId, routine.replayReady ? "replay" : "cold_teach");
-      await attachCreatedSession(created, routine);
-    } catch (reason) {
-      if (created) {
-        try {
-          await api.stopBrowser(created.id, "start_failed");
-        } catch {
-          // Provider cleanup failure is reconciled by the backend lifecycle service.
-        }
-      }
-      setStartError(reason instanceof Error ? reason.message : "The task could not be started.");
-    } finally {
-      setStarting(false);
-    }
-  };
-
-  const attachCreatedSession = async (created: SessionSnapshot, routine?: Routine) => {
-    if (!participant) throw new Error("The participant session is unavailable.");
-    const attached = await api.attachBrowser(created.id);
-    const snapshot: SessionSnapshot = {
-      ...created,
-      ...attached,
-      id: created.id,
-      userId: attached.userId ?? created.userId ?? participant.userId,
-      participantSessionId: attached.participantSessionId ?? created.participantSessionId ?? participant.participantSessionId,
-      browserbaseSessionId: attached.browserbaseSessionId ?? created.browserbaseSessionId,
-      task: {
-        id: attached.task?.id ?? created.task?.id ?? routine?.id,
-        name: attached.task?.name ?? created.task?.name ?? routine?.name ?? "Suggested task",
-        mode: attached.task?.mode ?? created.task?.mode ?? (routine?.replayReady ? "replay" : "cold"),
-        skillId: attached.task?.skillId ?? created.task?.skillId ?? routine?.skillId,
-        skillRevision: attached.task?.skillRevision ?? created.task?.skillRevision ?? routine?.revision,
-      },
-    };
-    setActiveSession({ snapshot });
-  };
-
-  const startReminder = async (reminderId: string) => {
-    if (!participant) return;
-    setStarting(true);
-    setStartError(undefined);
-    let created: SessionSnapshot | undefined;
-    try {
-      api.setAccessToken(participant.accessToken);
-      created = await api.acceptReminder(reminderId);
-      await attachCreatedSession(created);
-    } catch (reason) {
-      if (created) {
-        try {
-          await api.stopBrowser(created.id, "start_failed");
-        } catch {
-          // Provider cleanup failure is reconciled by the backend lifecycle service.
-        }
-      }
-      setStartError(reason instanceof Error ? reason.message : "The suggested task could not be started.");
-    } finally {
-      setStarting(false);
-    }
-  };
-
   const readingClass = participant?.readingSize === "larger" && view === "participant" ? "reading-larger" : "reading-large";
-  const showRoleNavigation = !activeSession;
+  const showRoleNavigation = !activeRun;
 
   return (
     <div className={`app ${readingClass}`}>
@@ -240,7 +166,7 @@ export default function App() {
                 </nav>
               ) : null}
               {view === "caregiver" ? <ProviderStatus error={readinessError} loading={readinessLoading} onRefresh={() => void loadReadiness()} readiness={readiness} /> : null}
-              {view === "caregiver" && caregiver && !activeSession ? (
+              {view === "caregiver" && caregiver && !activeRun ? (
                 <button aria-label="End this signed-in session" className="icon-button" onClick={signOutCaregiver} title="Sign out" type="button"><LogOut aria-hidden="true" size={21} /></button>
               ) : null}
             </div>
@@ -256,10 +182,15 @@ export default function App() {
               readinessError={readinessError}
               readinessLoading={readinessLoading}
             />
-          ) : activeSession && participant ? (
-            <ParticipantSession initial={activeSession.snapshot} initialLiveViewUrl={activeSession.liveViewUrl} onExit={() => setActiveSession(undefined)} participant={participant} />
+          ) : activeRun && participant ? (
+            <AgentDashboard
+              initialRun={activeRun}
+              onExit={() => setActiveRun(undefined)}
+              sessionId={activeRun.sessionId}
+              taskName={activeRun.taskName}
+            />
           ) : participant ? (
-            <RoutineChooser onStart={startRoutine} onStartReminder={startReminder} participant={participant} startError={startError} starting={starting} />
+            <TaskLauncher onStarted={setActiveRun} />
           ) : (
             <main className="participant-entry" id="main-content">
               <div className="participant-entry__card" role={participantError ? "alert" : "status"}>
