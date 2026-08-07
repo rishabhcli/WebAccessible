@@ -7,12 +7,13 @@ import { TaskLauncher } from "./agent/TaskLauncher";
 import { CaregiverView } from "./caregiver/CaregiverView";
 import { LandingPage } from "./landing/LandingPage";
 import { ProviderStatus } from "./shared/ProviderStatus";
+import { SlidesView } from "./slides/SlidesView";
 
 const PARTICIPANT_STORAGE_KEY = "webaccessible.participant-session";
 const CAREGIVER_STORAGE_KEY = "webaccessible.caregiver-session";
 const PARTICIPANT_USER_ID_KEY = "webaccessible.participantUserId";
 
-type AppView = "landing" | "participant" | "caregiver";
+type AppView = "landing" | "participant" | "caregiver" | "slides";
 
 function readContext(key: string): ParticipantContext | undefined {
   try {
@@ -27,6 +28,7 @@ function readContext(key: string): ParticipantContext | undefined {
 }
 
 function initialView(): AppView {
+  if (window.location.pathname.startsWith("/slides")) return "slides";
   if (window.location.pathname.startsWith("/caregiver")) return "caregiver";
   if (window.location.pathname.startsWith("/participant")) return "participant";
   return "landing";
@@ -84,7 +86,7 @@ export default function App() {
 
   const navigate = (nextView: AppView) => {
     setView(nextView);
-    const path = nextView === "caregiver" ? "/caregiver" : nextView === "participant" ? "/participant" : "/";
+    const path = nextView === "slides" ? "/slides" : nextView === "caregiver" ? "/caregiver" : nextView === "participant" ? "/participant" : "/";
     window.history.pushState({}, "", path);
     window.scrollTo({ top: 0, behavior: "auto" });
   };
@@ -147,7 +149,9 @@ export default function App() {
   return (
     <div className={`app ${readingClass}`}>
       <a className="skip-link" href="#main-content">Skip to main content</a>
-      {view === "landing" ? (
+      {view === "slides" ? (
+        <SlidesView />
+      ) : view === "landing" ? (
         <LandingPage onCaregiver={() => navigate("caregiver")} onStart={() => navigate("participant")} />
       ) : (
         <>

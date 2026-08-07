@@ -1,0 +1,330 @@
+{
+  "schema": "openai.presentation.layout/v4",
+  "unit": "px",
+  "slide": {
+    "aid": "sl/63vgjn",
+    "id": "63vgjn",
+    "slide": 7,
+    "layoutId": "b2e98d7a-4b74-42bc-a02b-cdd7880d1fc1",
+    "layoutName": "Title Slide",
+    "layoutType": "title",
+    "masterLayoutId": "39ba88c1-b5ec-454d-9c88-2d14dab206f4",
+    "masterLayoutName": "Master",
+    "backgroundColor": "#FFFFFF",
+    "frame": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "theme": {
+    "colorSchemeName": "ChatGPT",
+    "colors": {
+      "accent1": "#156082",
+      "accent2": "#E97132",
+      "accent3": "#196B24",
+      "accent4": "#0F9ED5",
+      "accent5": "#A02B93",
+      "accent6": "#4EA72E",
+      "bg1": "#FFFFFF",
+      "bg2": "#000000",
+      "tx1": "#1F1F1F",
+      "tx2": "#FFFFFF",
+      "dk1": "#000000",
+      "lt1": "#FFFFFF",
+      "dk2": "#0E2841",
+      "lt2": "#E8E8E8",
+      "hlink": "#467886",
+      "folHlink": "#96607D"
+    },
+    "typefaces": [
+      "Arial"
+    ]
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "b2e98d7a-4b74-42bc-a02b-cdd7880d1fc1",
+      "name": "Title Slide",
+      "type": "title",
+      "parentLayoutId": "39ba88c1-b5ec-454d-9c88-2d14dab206f4",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "39ba88c1-b5ec-454d-9c88-2d14dab206f4",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/a10v6lg3",
+      "id": "1",
+      "name": "demo-accent-7",
+      "bbox": [
+        41,
+        28,
+        10,
+        58
+      ],
+      "geometry": "rect",
+      "fillColor": "#176847",
+      "lineColor": "#176847",
+      "lineWidth": 0
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/xore10ze",
+      "id": "2",
+      "name": "demo-title-7",
+      "bbox": [
+        69,
+        26,
+        1169,
+        54
+      ],
+      "geometry": "rect",
+      "text": "Demo: holding the next practical haircut time.",
+      "textPreview": "Demo: holding the next practical haircut time.",
+      "resolvedFontSize": 40,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 40,
+        "typeface": "Arial",
+        "color": "#17201B",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Demo: holding the next practical haircut time."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Demo: holding the next practical haircut time.",
+          "resolvedTextStyle": {
+            "fontSize": 40,
+            "typeface": "Arial",
+            "color": "#17201B",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Demo: holding the next practical haircut time.",
+              "fontSize": 40,
+              "typeface": "Arial",
+              "color": "#17201B",
+              "bold": true,
+              "alignment": "left"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 3,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/cnid8vy9",
+      "id": "3",
+      "name": "demo-subtitle-7",
+      "bbox": [
+        69,
+        88,
+        1130,
+        36
+      ],
+      "geometry": "rect",
+      "text": "Plain-language narration makes the run understandable without exposing browser internals.",
+      "textPreview": "Plain-language narration makes the run understandable without exposing browser internals.",
+      "resolvedFontSize": 19,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 19,
+        "typeface": "Arial",
+        "color": "#55635B",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Plain-language narration makes the run understandable without exposing browser internals."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Plain-language narration makes the run understandable without exposing browser internals.",
+          "resolvedTextStyle": {
+            "fontSize": 19,
+            "typeface": "Arial",
+            "color": "#55635B",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Plain-language narration makes the run understandable without exposing browser internals.",
+              "fontSize": 19,
+              "typeface": "Arial",
+              "color": "#55635B",
+              "alignment": "left"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 4,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/zqtw3ahk",
+      "id": "4",
+      "name": "demo-image-backing-7",
+      "bbox": [
+        147,
+        138,
+        986,
+        555
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#E7F0EB",
+      "lineColor": "#C8D1CA",
+      "lineWidth": 1
+    },
+    {
+      "order": 5,
+      "kind": "image",
+      "scope": "slide",
+      "aid": "im/32dwr2ts",
+      "id": "5",
+      "bbox": [
+        155,
+        146,
+        970,
+        546
+      ],
+      "geometry": "roundRect",
+      "alt": "Illustrative WebAccessible haircut task in progress, holding a Saturday appointment",
+      "contentType": "image/jpeg",
+      "imageFit": "contain",
+      "imageMask": {
+        "geometry": "roundRect",
+        "adjustmentList": [
+          {
+            "name": "adj",
+            "formula": "val 2564"
+          }
+        ]
+      },
+      "asset": {
+        "assetId": "ee4c5b5e-e62b-4233-a247-d6865f89c001",
+        "contentType": "image/jpeg",
+        "byteLength": 62654
+      }
+    },
+    {
+      "order": 6,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/lsbe50fq",
+      "id": "6",
+      "name": "page-7",
+      "bbox": [
+        1186,
+        662,
+        52,
+        22
+      ],
+      "geometry": "rect",
+      "text": "07",
+      "textPreview": "07",
+      "resolvedFontSize": 13,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 13,
+        "typeface": "Arial",
+        "color": "#55635B",
+        "alignment": "right",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "07"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "07",
+          "resolvedTextStyle": {
+            "fontSize": 13,
+            "typeface": "Arial",
+            "color": "#55635B",
+            "alignment": "right"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "07",
+              "fontSize": 13,
+              "typeface": "Arial",
+              "color": "#55635B",
+              "alignment": "right"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    }
+  ],
+  "composeRuns": []
+}

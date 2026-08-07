@@ -1,0 +1,336 @@
+{
+  "schema": "openai.presentation.layout/v4",
+  "unit": "px",
+  "slide": {
+    "aid": "sl/6ardor",
+    "id": "6ardor",
+    "slide": 3,
+    "layoutId": "b2e98d7a-4b74-42bc-a02b-cdd7880d1fc1",
+    "layoutName": "Title Slide",
+    "layoutType": "title",
+    "masterLayoutId": "39ba88c1-b5ec-454d-9c88-2d14dab206f4",
+    "masterLayoutName": "Master",
+    "backgroundColor": "#FFFFFF",
+    "frame": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "theme": {
+    "colorSchemeName": "ChatGPT",
+    "colors": {
+      "accent1": "#156082",
+      "accent2": "#E97132",
+      "accent3": "#196B24",
+      "accent4": "#0F9ED5",
+      "accent5": "#A02B93",
+      "accent6": "#4EA72E",
+      "bg1": "#FFFFFF",
+      "bg2": "#000000",
+      "tx1": "#1F1F1F",
+      "tx2": "#FFFFFF",
+      "dk1": "#000000",
+      "lt1": "#FFFFFF",
+      "dk2": "#0E2841",
+      "lt2": "#E8E8E8",
+      "hlink": "#467886",
+      "folHlink": "#96607D"
+    },
+    "typefaces": [
+      "Arial"
+    ]
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "b2e98d7a-4b74-42bc-a02b-cdd7880d1fc1",
+      "name": "Title Slide",
+      "type": "title",
+      "parentLayoutId": "39ba88c1-b5ec-454d-9c88-2d14dab206f4",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "39ba88c1-b5ec-454d-9c88-2d14dab206f4",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/knq1gryx",
+      "id": "1",
+      "name": "accent-3",
+      "bbox": [
+        41,
+        36,
+        10,
+        62
+      ],
+      "geometry": "rect",
+      "fillColor": "#176847",
+      "lineColor": "#176847",
+      "lineWidth": 0
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/jmh07mxc",
+      "id": "2",
+      "name": "title-3",
+      "bbox": [
+        69,
+        34,
+        1169,
+        80
+      ],
+      "geometry": "rect",
+      "text": "The participant starts with a goal — not setup.",
+      "textPreview": "The participant starts with a goal — not setup.",
+      "resolvedFontSize": 44,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 44,
+        "typeface": "Arial",
+        "color": "#17201B",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "The participant starts with a goal — not setup."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "The participant starts with a goal — not setup.",
+          "resolvedTextStyle": {
+            "fontSize": 44,
+            "typeface": "Arial",
+            "color": "#17201B",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "The participant starts with a goal — not setup.",
+              "fontSize": 44,
+              "typeface": "Arial",
+              "color": "#17201B",
+              "bold": true,
+              "alignment": "left"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 3,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ilojehgr",
+      "id": "3",
+      "name": "subtitle-3",
+      "bbox": [
+        69,
+        126,
+        1130,
+        58
+      ],
+      "geometry": "rect",
+      "text": "Three ready errands, a free-form request, and grounded recall — all behind passwordless entry.",
+      "textPreview": "Three ready errands, a free-form request, and grounded recall — all behind passwordless entry.",
+      "resolvedFontSize": 22,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 22,
+        "typeface": "Arial",
+        "color": "#55635B",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Three ready errands, a free-form request, and grounded recall — all behind passwordless entry."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Three ready errands, a free-form request, and grounded recall — all behind passwordless entry.",
+          "resolvedTextStyle": {
+            "fontSize": 22,
+            "typeface": "Arial",
+            "color": "#55635B",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Three ready errands, a free-form request, and grounded recall — all behind passwordless entry.",
+              "fontSize": 22,
+              "typeface": "Arial",
+              "color": "#55635B",
+              "alignment": "left"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 4,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/tsz2dwfe",
+      "id": "4",
+      "name": "image-backing-3",
+      "bbox": [
+        72,
+        196,
+        1136,
+        464
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#E7F0EB",
+      "lineColor": "#C8D1CA",
+      "lineWidth": 1
+    },
+    {
+      "order": 5,
+      "kind": "image",
+      "scope": "slide",
+      "aid": "im/dsnyp0f2",
+      "id": "5",
+      "bbox": [
+        80,
+        204,
+        1120,
+        448
+      ],
+      "geometry": "roundRect",
+      "alt": "WebAccessible participant task launcher with DMV, grocery, and haircut errands",
+      "contentType": "image/jpeg",
+      "imageCrop": {
+        "left": 0,
+        "top": 0,
+        "right": 0,
+        "bottom": 0.22
+      },
+      "imageFit": "cover",
+      "imageMask": {
+        "geometry": "roundRect",
+        "adjustmentList": [
+          {
+            "name": "adj",
+            "formula": "val 3571"
+          }
+        ]
+      },
+      "asset": {
+        "assetId": "ee024b6f-a090-42a3-bb35-017c3638d6a5",
+        "contentType": "image/jpeg",
+        "byteLength": 65510
+      }
+    },
+    {
+      "order": 6,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/7qh0b6x8",
+      "id": "6",
+      "name": "page-3",
+      "bbox": [
+        1186,
+        662,
+        52,
+        22
+      ],
+      "geometry": "rect",
+      "text": "03",
+      "textPreview": "03",
+      "resolvedFontSize": 13,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 13,
+        "typeface": "Arial",
+        "color": "#55635B",
+        "alignment": "right",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "03"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "03",
+          "resolvedTextStyle": {
+            "fontSize": 13,
+            "typeface": "Arial",
+            "color": "#55635B",
+            "alignment": "right"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "03",
+              "fontSize": 13,
+              "typeface": "Arial",
+              "color": "#55635B",
+              "alignment": "right"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    }
+  ],
+  "composeRuns": []
+}

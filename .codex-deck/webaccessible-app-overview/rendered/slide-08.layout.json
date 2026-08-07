@@ -1,0 +1,1700 @@
+{
+  "schema": "openai.presentation.layout/v4",
+  "unit": "px",
+  "slide": {
+    "aid": "sl/20txnh",
+    "id": "20txnh",
+    "slide": 8,
+    "layoutId": "b2e98d7a-4b74-42bc-a02b-cdd7880d1fc1",
+    "layoutName": "Title Slide",
+    "layoutType": "title",
+    "masterLayoutId": "39ba88c1-b5ec-454d-9c88-2d14dab206f4",
+    "masterLayoutName": "Master",
+    "frame": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "theme": {
+    "colorSchemeName": "ChatGPT",
+    "colors": {
+      "accent1": "#156082",
+      "accent2": "#E97132",
+      "accent3": "#196B24",
+      "accent4": "#0F9ED5",
+      "accent5": "#A02B93",
+      "accent6": "#4EA72E",
+      "bg1": "#FFFFFF",
+      "bg2": "#000000",
+      "tx1": "#1F1F1F",
+      "tx2": "#FFFFFF",
+      "dk1": "#000000",
+      "lt1": "#FFFFFF",
+      "dk2": "#0E2841",
+      "lt2": "#E8E8E8",
+      "hlink": "#467886",
+      "folHlink": "#96607D"
+    },
+    "typefaces": [
+      "Arial",
+      "Helvetica Neue"
+    ]
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "b2e98d7a-4b74-42bc-a02b-cdd7880d1fc1",
+      "name": "Title Slide",
+      "type": "title",
+      "parentLayoutId": "39ba88c1-b5ec-454d-9c88-2d14dab206f4",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "39ba88c1-b5ec-454d-9c88-2d14dab206f4",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/e5ozqxgb",
+      "id": "1",
+      "name": "Google-Shape-532-p58-2",
+      "bbox": [
+        1184.18,
+        659.24,
+        54.48,
+        25.33
+      ],
+      "composeSource": {
+        "run": 1,
+        "path": "0.0"
+      },
+      "geometry": "rect",
+      "text": "08",
+      "textPreview": "08",
+      "resolvedFontSize": 13.33,
+      "resolvedTextStyle": {
+        "anchor": 3,
+        "fontSize": 13.33,
+        "typeface": "Helvetica Neue",
+        "color": "#000000",
+        "alignment": "right",
+        "verticalAlignment": "bottom",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "08"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "08",
+          "resolvedTextStyle": {
+            "anchor": 3,
+            "fontSize": 13.33,
+            "typeface": "Helvetica Neue",
+            "color": "#000000",
+            "alignment": "right",
+            "verticalAlignment": "bottom",
+            "wrap": "square",
+            "autoFit": "none",
+            "insets": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "08",
+              "anchor": 3,
+              "fontSize": 13.33,
+              "typeface": "Helvetica Neue",
+              "color": "#000000",
+              "alignment": "right",
+              "verticalAlignment": "bottom",
+              "wrap": "square",
+              "autoFit": "none",
+              "insets": {
+                "top": 0,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+              }
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/18fy1sfm",
+      "id": "2",
+      "name": "Google-Shape-533-p58-3",
+      "bbox": [
+        41.33,
+        36.12,
+        1197.33,
+        109.97
+      ],
+      "composeSource": {
+        "run": 1,
+        "path": "0.1"
+      },
+      "geometry": "rect",
+      "text": "Autonomy stops exactly where consequences begin.",
+      "textPreview": "Autonomy stops exactly where consequences begin.",
+      "resolvedFontSize": 38.67,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 38.67,
+        "typeface": "Helvetica Neue",
+        "color": "#000000",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Autonomy stops exactly where consequences"
+          },
+          {
+            "index": 2,
+            "text": "begin."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Autonomy stops exactly where consequences begin.",
+          "lineSpacingPercent": 100000,
+          "resolvedTextStyle": {
+            "anchor": 1,
+            "fontSize": 38.67,
+            "typeface": "Helvetica Neue",
+            "color": "#000000",
+            "alignment": "left",
+            "verticalAlignment": "top",
+            "wrap": "square",
+            "autoFit": "none",
+            "insets": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Autonomy stops exactly where consequences begin.",
+              "fontSize": 48,
+              "typeface": "Arial",
+              "color": "#17201B",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 3,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/g76hsny1",
+      "id": "3",
+      "name": "Google-Shape-534-p58-4",
+      "bbox": [
+        41.33,
+        180.83,
+        581.33,
+        90.83
+      ],
+      "composeSource": {
+        "run": 1,
+        "path": "0.2"
+      },
+      "geometry": "rect",
+      "text": "Reversible work continues without constant interruptions.",
+      "textPreview": "Reversible work continues without constant interruptions.",
+      "resolvedFontSize": 32,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 32,
+        "typeface": "Helvetica Neue",
+        "color": "#000000",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Reversible work continues without"
+          },
+          {
+            "index": 2,
+            "text": "constant interruptions."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Reversible work continues without constant interruptions.",
+          "lineSpacingPercent": 100000,
+          "resolvedTextStyle": {
+            "anchor": 1,
+            "fontSize": 32,
+            "typeface": "Helvetica Neue",
+            "color": "#000000",
+            "alignment": "left",
+            "verticalAlignment": "top",
+            "wrap": "square",
+            "autoFit": "none",
+            "insets": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Reversible work continues without constant interruptions.",
+              "fontSize": 32,
+              "typeface": "Arial",
+              "color": "#173F32",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 4,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/3uhg32xs",
+      "id": "4",
+      "name": "Content-Placeholder-10-5",
+      "bbox": [
+        828,
+        313.94,
+        410.67,
+        57.61
+      ],
+      "composeSource": {
+        "run": 1,
+        "path": "0.3"
+      },
+      "geometry": "rect",
+      "text": "Money pauses",
+      "textPreview": "Money pauses",
+      "resolvedFontSize": 32,
+      "resolvedTextStyle": {
+        "fontSize": 32,
+        "typeface": "Helvetica Neue",
+        "color": "#000000",
+        "alignment": "left",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Money pauses"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Money pauses",
+          "lineSpacingPercent": 100000,
+          "resolvedTextStyle": {
+            "fontSize": 32,
+            "typeface": "Helvetica Neue",
+            "color": "#000000",
+            "alignment": "left",
+            "autoFit": "shrinkText",
+            "insets": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Money pauses",
+              "fontSize": 30,
+              "typeface": "Arial",
+              "color": "#173F32",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 5,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/2tozuxg7",
+      "id": "5",
+      "name": "Google-Shape-340-p61-6",
+      "bbox": [
+        788.21,
+        316.55,
+        22.32,
+        22.31
+      ],
+      "composeSource": {
+        "run": 1,
+        "path": "0.4"
+      },
+      "geometry": "custom",
+      "fillColor": "#000000"
+    },
+    {
+      "order": 6,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/pwzy5cfy",
+      "id": "6",
+      "name": "TextBox-11-7",
+      "bbox": [
+        41.33,
+        313.94,
+        581.33,
+        302.85
+      ],
+      "composeSource": {
+        "run": 1,
+        "path": "0.5"
+      },
+      "geometry": "rect",
+      "text": "The agent may search, navigate, fill forms, add to a cart, join a queue, or hold an appointment.\nIt does not hide uncertainty: risky actions pause and failures remain visible.",
+      "textPreview": "The agent may search, navigate, fill forms, add to a cart, join a queue, or hold an appointment. | It does not hide uncertainty: risky ac...",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "fontSize": 24,
+        "typeface": "Helvetica Neue",
+        "color": "#000000",
+        "alignment": "left",
+        "wrap": "square",
+        "autoFit": "resizeShapeToFitText",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 4,
+        "lines": [
+          {
+            "index": 1,
+            "text": "The agent may search, navigate, fill forms, add to a cart,"
+          },
+          {
+            "index": 2,
+            "text": "join a queue, or hold an appointment."
+          },
+          {
+            "index": 3,
+            "text": "It does not hide uncertainty: risky actions pause and"
+          },
+          {
+            "index": 4,
+            "text": "failures remain visible."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "The agent may search, navigate, fill forms, add to a cart, join a queue, or hold an appointment.",
+          "lineSpacingPercent": 100000,
+          "spaceAfter": 900,
+          "resolvedTextStyle": {
+            "fontSize": 24,
+            "typeface": "Helvetica Neue",
+            "color": "#000000",
+            "alignment": "left",
+            "wrap": "square",
+            "autoFit": "resizeShapeToFitText",
+            "insets": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "The agent may search, navigate, fill forms, add to a cart, join a queue, or hold an appointment.",
+              "fontSize": 23,
+              "typeface": "Arial",
+              "color": "#55635B"
+            }
+          ],
+          "marginLeft": 0
+        },
+        {
+          "index": 2,
+          "text": "It does not hide uncertainty: risky actions pause and failures remain visible.",
+          "lineSpacingPercent": 100000,
+          "resolvedTextStyle": {
+            "fontSize": 24,
+            "typeface": "Helvetica Neue",
+            "color": "#000000",
+            "alignment": "left",
+            "wrap": "square",
+            "autoFit": "resizeShapeToFitText",
+            "insets": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "It does not hide uncertainty: risky actions pause and failures remain visible.",
+              "fontSize": 23,
+              "typeface": "Arial",
+              "color": "#55635B"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 7,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ovqhw7yd",
+      "id": "7",
+      "name": "Content-Placeholder-10-8",
+      "bbox": [
+        828,
+        377.94,
+        410.67,
+        57.61
+      ],
+      "composeSource": {
+        "run": 1,
+        "path": "0.6"
+      },
+      "geometry": "rect",
+      "text": "Deletion pauses",
+      "textPreview": "Deletion pauses",
+      "resolvedFontSize": 32,
+      "resolvedTextStyle": {
+        "fontSize": 32,
+        "typeface": "Helvetica Neue",
+        "color": "#000000",
+        "alignment": "left",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Deletion pauses"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Deletion pauses",
+          "lineSpacingPercent": 100000,
+          "resolvedTextStyle": {
+            "fontSize": 32,
+            "typeface": "Helvetica Neue",
+            "color": "#000000",
+            "alignment": "left",
+            "autoFit": "shrinkText",
+            "insets": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Deletion pauses",
+              "fontSize": 30,
+              "typeface": "Arial",
+              "color": "#173F32",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 8,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/byh072xo",
+      "id": "8",
+      "name": "Google-Shape-340-p61-9",
+      "bbox": [
+        788.21,
+        380.55,
+        22.32,
+        22.31
+      ],
+      "composeSource": {
+        "run": 1,
+        "path": "0.7"
+      },
+      "geometry": "custom",
+      "fillColor": "#000000"
+    },
+    {
+      "order": 9,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/qx8zyhgj",
+      "id": "9",
+      "name": "Content-Placeholder-10-10",
+      "bbox": [
+        828,
+        442.5,
+        410.67,
+        57.61
+      ],
+      "composeSource": {
+        "run": 1,
+        "path": "0.8"
+      },
+      "geometry": "rect",
+      "text": "Passwords stay private",
+      "textPreview": "Passwords stay private",
+      "resolvedFontSize": 32,
+      "resolvedTextStyle": {
+        "fontSize": 32,
+        "typeface": "Helvetica Neue",
+        "color": "#000000",
+        "alignment": "left",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Passwords stay private"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Passwords stay private",
+          "lineSpacingPercent": 100000,
+          "resolvedTextStyle": {
+            "fontSize": 32,
+            "typeface": "Helvetica Neue",
+            "color": "#000000",
+            "alignment": "left",
+            "autoFit": "shrinkText",
+            "insets": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Passwords stay private",
+              "fontSize": 30,
+              "typeface": "Arial",
+              "color": "#173F32",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 10,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/8r2143qx",
+      "id": "10",
+      "name": "Google-Shape-340-p61-11",
+      "bbox": [
+        788.21,
+        445.1,
+        22.32,
+        22.31
+      ],
+      "composeSource": {
+        "run": 1,
+        "path": "0.9"
+      },
+      "geometry": "custom",
+      "fillColor": "#000000"
+    },
+    {
+      "order": 11,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/tsb2x87i",
+      "id": "11",
+      "name": "Content-Placeholder-10-12",
+      "bbox": [
+        828,
+        506.49,
+        410.67,
+        57.61
+      ],
+      "composeSource": {
+        "run": 1,
+        "path": "0.10"
+      },
+      "geometry": "rect",
+      "text": "Every action is visible",
+      "textPreview": "Every action is visible",
+      "resolvedFontSize": 32,
+      "resolvedTextStyle": {
+        "fontSize": 32,
+        "typeface": "Helvetica Neue",
+        "color": "#000000",
+        "alignment": "left",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Every action is visible"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Every action is visible",
+          "lineSpacingPercent": 100000,
+          "resolvedTextStyle": {
+            "fontSize": 32,
+            "typeface": "Helvetica Neue",
+            "color": "#000000",
+            "alignment": "left",
+            "autoFit": "shrinkText",
+            "insets": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Every action is visible",
+              "fontSize": 30,
+              "typeface": "Arial",
+              "color": "#173F32",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 12,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/650j2t87",
+      "id": "12",
+      "name": "Google-Shape-340-p61-13",
+      "bbox": [
+        788.21,
+        509.1,
+        22.32,
+        22.31
+      ],
+      "composeSource": {
+        "run": 1,
+        "path": "0.11"
+      },
+      "geometry": "custom",
+      "fillColor": "#000000"
+    },
+    {
+      "order": 13,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/76tkvypc",
+      "id": "13",
+      "name": "Content-Placeholder-10-14",
+      "bbox": [
+        828,
+        571.83,
+        410.67,
+        57.61
+      ],
+      "composeSource": {
+        "run": 1,
+        "path": "0.12"
+      },
+      "geometry": "rect",
+      "text": "Scam signals escalate",
+      "textPreview": "Scam signals escalate",
+      "resolvedFontSize": 32,
+      "resolvedTextStyle": {
+        "fontSize": 32,
+        "typeface": "Helvetica Neue",
+        "color": "#000000",
+        "alignment": "left",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Scam signals escalate"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Scam signals escalate",
+          "lineSpacingPercent": 100000,
+          "resolvedTextStyle": {
+            "fontSize": 32,
+            "typeface": "Helvetica Neue",
+            "color": "#000000",
+            "alignment": "left",
+            "autoFit": "shrinkText",
+            "insets": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Scam signals escalate",
+              "fontSize": 30,
+              "typeface": "Arial",
+              "color": "#173F32",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 14,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/gv2l83q9",
+      "id": "14",
+      "name": "Google-Shape-340-p61-15",
+      "bbox": [
+        788.21,
+        574.44,
+        22.32,
+        22.31
+      ],
+      "composeSource": {
+        "run": 1,
+        "path": "0.13"
+      },
+      "geometry": "custom",
+      "fillColor": "#000000"
+    }
+  ],
+  "composeRuns": [
+    {
+      "index": 1,
+      "frame": {
+        "left": 0,
+        "top": 0,
+        "width": 1280,
+        "height": 720
+      },
+      "baseUnit": 1,
+      "root": {
+        "path": "0",
+        "kind": "layers",
+        "name": "codex-grid-layout-library#slide-10",
+        "requestedSize": {
+          "width": {
+            "mode": "fill",
+            "value": 1
+          },
+          "height": {
+            "mode": "fill",
+            "value": 1
+          }
+        },
+        "intrinsicSize": {
+          "width": 1238.67,
+          "height": 684.57
+        },
+        "frame": {
+          "left": 0,
+          "top": 0,
+          "width": 1280,
+          "height": 720
+        },
+        "children": [
+          {
+            "path": "0.0",
+            "kind": "text",
+            "name": "Google-Shape-532-p58-2",
+            "position": {
+              "left": 1184.18,
+              "top": 659.24
+            },
+            "requestedSize": {
+              "width": {
+                "mode": "fixed",
+                "value": 54.48
+              },
+              "height": {
+                "mode": "fixed",
+                "value": 25.33
+              }
+            },
+            "intrinsicSize": {
+              "width": 54.48,
+              "height": 25.33
+            },
+            "frame": {
+              "left": 1184.18,
+              "top": 659.24,
+              "width": 54.48,
+              "height": 25.33
+            },
+            "snappedFrame": {
+              "left": 1184.18,
+              "top": 659.24,
+              "width": 54.48,
+              "height": 25.33
+            },
+            "children": [],
+            "text": "08",
+            "transform": "none",
+            "element": {
+              "aid": "sh/e5ozqxgb",
+              "id": "1",
+              "kind": "shape"
+            }
+          },
+          {
+            "path": "0.1",
+            "kind": "text",
+            "name": "Google-Shape-533-p58-3",
+            "position": {
+              "left": 41.33,
+              "top": 36.12
+            },
+            "requestedSize": {
+              "width": {
+                "mode": "fixed",
+                "value": 1197.33
+              },
+              "height": {
+                "mode": "fixed",
+                "value": 109.97
+              }
+            },
+            "intrinsicSize": {
+              "width": 1197.33,
+              "height": 109.97
+            },
+            "frame": {
+              "left": 41.33,
+              "top": 36.12,
+              "width": 1197.33,
+              "height": 109.97
+            },
+            "snappedFrame": {
+              "left": 41.33,
+              "top": 36.12,
+              "width": 1197.33,
+              "height": 109.97
+            },
+            "children": [],
+            "text": "Autonomy stops exactly where consequences begin.",
+            "transform": "none",
+            "element": {
+              "aid": "sh/18fy1sfm",
+              "id": "2",
+              "kind": "shape"
+            }
+          },
+          {
+            "path": "0.2",
+            "kind": "text",
+            "name": "Google-Shape-534-p58-4",
+            "position": {
+              "left": 41.33,
+              "top": 180.83
+            },
+            "requestedSize": {
+              "width": {
+                "mode": "fixed",
+                "value": 581.33
+              },
+              "height": {
+                "mode": "fixed",
+                "value": 90.83
+              }
+            },
+            "intrinsicSize": {
+              "width": 581.33,
+              "height": 90.83
+            },
+            "frame": {
+              "left": 41.33,
+              "top": 180.83,
+              "width": 581.33,
+              "height": 90.83
+            },
+            "snappedFrame": {
+              "left": 41.33,
+              "top": 180.83,
+              "width": 581.33,
+              "height": 90.83
+            },
+            "children": [],
+            "text": "Reversible work continues without constant interruptions.",
+            "transform": "none",
+            "element": {
+              "aid": "sh/g76hsny1",
+              "id": "3",
+              "kind": "shape"
+            }
+          },
+          {
+            "path": "0.3",
+            "kind": "text",
+            "name": "Content-Placeholder-10-5",
+            "position": {
+              "left": 828,
+              "top": 313.94
+            },
+            "requestedSize": {
+              "width": {
+                "mode": "fixed",
+                "value": 410.67
+              },
+              "height": {
+                "mode": "fixed",
+                "value": 57.61
+              }
+            },
+            "intrinsicSize": {
+              "width": 410.67,
+              "height": 57.61
+            },
+            "frame": {
+              "left": 828,
+              "top": 313.94,
+              "width": 410.67,
+              "height": 57.61
+            },
+            "snappedFrame": {
+              "left": 828,
+              "top": 313.94,
+              "width": 410.67,
+              "height": 57.61
+            },
+            "children": [],
+            "text": "Money pauses",
+            "transform": "none",
+            "element": {
+              "aid": "sh/3uhg32xs",
+              "id": "4",
+              "kind": "shape"
+            }
+          },
+          {
+            "path": "0.4",
+            "kind": "shape",
+            "name": "Google-Shape-340-p61-6",
+            "position": {
+              "left": 788.21,
+              "top": 316.55
+            },
+            "requestedSize": {
+              "width": {
+                "mode": "fixed",
+                "value": 22.32
+              },
+              "height": {
+                "mode": "fixed",
+                "value": 22.31
+              }
+            },
+            "intrinsicSize": {
+              "width": 22.32,
+              "height": 22.31
+            },
+            "frame": {
+              "left": 788.21,
+              "top": 316.55,
+              "width": 22.32,
+              "height": 22.31
+            },
+            "snappedFrame": {
+              "left": 788.21,
+              "top": 316.55,
+              "width": 22.32,
+              "height": 22.31
+            },
+            "children": [],
+            "geometry": "custom",
+            "element": {
+              "aid": "sh/2tozuxg7",
+              "id": "5",
+              "kind": "shape"
+            }
+          },
+          {
+            "path": "0.5",
+            "kind": "text",
+            "name": "TextBox-11-7",
+            "position": {
+              "left": 41.33,
+              "top": 313.94
+            },
+            "requestedSize": {
+              "width": {
+                "mode": "fixed",
+                "value": 581.33
+              },
+              "height": {
+                "mode": "fixed",
+                "value": 302.85
+              }
+            },
+            "intrinsicSize": {
+              "width": 581.33,
+              "height": 302.85
+            },
+            "frame": {
+              "left": 41.33,
+              "top": 313.94,
+              "width": 581.33,
+              "height": 302.85
+            },
+            "snappedFrame": {
+              "left": 41.33,
+              "top": 313.94,
+              "width": 581.33,
+              "height": 302.85
+            },
+            "children": [],
+            "text": "The agent may search, navigate, fill forms, add to a cart, join a queue, or hold an appointment.\nIt does not hide uncertainty: risky actions pause and failures remain visible.",
+            "transform": "none",
+            "element": {
+              "aid": "sh/pwzy5cfy",
+              "id": "6",
+              "kind": "shape"
+            }
+          },
+          {
+            "path": "0.6",
+            "kind": "text",
+            "name": "Content-Placeholder-10-8",
+            "position": {
+              "left": 828,
+              "top": 377.94
+            },
+            "requestedSize": {
+              "width": {
+                "mode": "fixed",
+                "value": 410.67
+              },
+              "height": {
+                "mode": "fixed",
+                "value": 57.61
+              }
+            },
+            "intrinsicSize": {
+              "width": 410.67,
+              "height": 57.61
+            },
+            "frame": {
+              "left": 828,
+              "top": 377.94,
+              "width": 410.67,
+              "height": 57.61
+            },
+            "snappedFrame": {
+              "left": 828,
+              "top": 377.94,
+              "width": 410.67,
+              "height": 57.61
+            },
+            "children": [],
+            "text": "Deletion pauses",
+            "transform": "none",
+            "element": {
+              "aid": "sh/ovqhw7yd",
+              "id": "7",
+              "kind": "shape"
+            }
+          },
+          {
+            "path": "0.7",
+            "kind": "shape",
+            "name": "Google-Shape-340-p61-9",
+            "position": {
+              "left": 788.21,
+              "top": 380.55
+            },
+            "requestedSize": {
+              "width": {
+                "mode": "fixed",
+                "value": 22.32
+              },
+              "height": {
+                "mode": "fixed",
+                "value": 22.31
+              }
+            },
+            "intrinsicSize": {
+              "width": 22.32,
+              "height": 22.31
+            },
+            "frame": {
+              "left": 788.21,
+              "top": 380.55,
+              "width": 22.32,
+              "height": 22.31
+            },
+            "snappedFrame": {
+              "left": 788.21,
+              "top": 380.55,
+              "width": 22.32,
+              "height": 22.31
+            },
+            "children": [],
+            "geometry": "custom",
+            "element": {
+              "aid": "sh/byh072xo",
+              "id": "8",
+              "kind": "shape"
+            }
+          },
+          {
+            "path": "0.8",
+            "kind": "text",
+            "name": "Content-Placeholder-10-10",
+            "position": {
+              "left": 828,
+              "top": 442.5
+            },
+            "requestedSize": {
+              "width": {
+                "mode": "fixed",
+                "value": 410.67
+              },
+              "height": {
+                "mode": "fixed",
+                "value": 57.61
+              }
+            },
+            "intrinsicSize": {
+              "width": 410.67,
+              "height": 57.61
+            },
+            "frame": {
+              "left": 828,
+              "top": 442.5,
+              "width": 410.67,
+              "height": 57.61
+            },
+            "snappedFrame": {
+              "left": 828,
+              "top": 442.5,
+              "width": 410.67,
+              "height": 57.61
+            },
+            "children": [],
+            "text": "Passwords stay private",
+            "transform": "none",
+            "element": {
+              "aid": "sh/qx8zyhgj",
+              "id": "9",
+              "kind": "shape"
+            }
+          },
+          {
+            "path": "0.9",
+            "kind": "shape",
+            "name": "Google-Shape-340-p61-11",
+            "position": {
+              "left": 788.21,
+              "top": 445.1
+            },
+            "requestedSize": {
+              "width": {
+                "mode": "fixed",
+                "value": 22.32
+              },
+              "height": {
+                "mode": "fixed",
+                "value": 22.31
+              }
+            },
+            "intrinsicSize": {
+              "width": 22.32,
+              "height": 22.31
+            },
+            "frame": {
+              "left": 788.21,
+              "top": 445.1,
+              "width": 22.32,
+              "height": 22.31
+            },
+            "snappedFrame": {
+              "left": 788.21,
+              "top": 445.1,
+              "width": 22.32,
+              "height": 22.31
+            },
+            "children": [],
+            "geometry": "custom",
+            "element": {
+              "aid": "sh/8r2143qx",
+              "id": "10",
+              "kind": "shape"
+            }
+          },
+          {
+            "path": "0.10",
+            "kind": "text",
+            "name": "Content-Placeholder-10-12",
+            "position": {
+              "left": 828,
+              "top": 506.49
+            },
+            "requestedSize": {
+              "width": {
+                "mode": "fixed",
+                "value": 410.67
+              },
+              "height": {
+                "mode": "fixed",
+                "value": 57.61
+              }
+            },
+            "intrinsicSize": {
+              "width": 410.67,
+              "height": 57.61
+            },
+            "frame": {
+              "left": 828,
+              "top": 506.49,
+              "width": 410.67,
+              "height": 57.61
+            },
+            "snappedFrame": {
+              "left": 828,
+              "top": 506.49,
+              "width": 410.67,
+              "height": 57.61
+            },
+            "children": [],
+            "text": "Every action is visible",
+            "transform": "none",
+            "element": {
+              "aid": "sh/tsb2x87i",
+              "id": "11",
+              "kind": "shape"
+            }
+          },
+          {
+            "path": "0.11",
+            "kind": "shape",
+            "name": "Google-Shape-340-p61-13",
+            "position": {
+              "left": 788.21,
+              "top": 509.1
+            },
+            "requestedSize": {
+              "width": {
+                "mode": "fixed",
+                "value": 22.32
+              },
+              "height": {
+                "mode": "fixed",
+                "value": 22.31
+              }
+            },
+            "intrinsicSize": {
+              "width": 22.32,
+              "height": 22.31
+            },
+            "frame": {
+              "left": 788.21,
+              "top": 509.1,
+              "width": 22.32,
+              "height": 22.31
+            },
+            "snappedFrame": {
+              "left": 788.21,
+              "top": 509.1,
+              "width": 22.32,
+              "height": 22.31
+            },
+            "children": [],
+            "geometry": "custom",
+            "element": {
+              "aid": "sh/650j2t87",
+              "id": "12",
+              "kind": "shape"
+            }
+          },
+          {
+            "path": "0.12",
+            "kind": "text",
+            "name": "Content-Placeholder-10-14",
+            "position": {
+              "left": 828,
+              "top": 571.83
+            },
+            "requestedSize": {
+              "width": {
+                "mode": "fixed",
+                "value": 410.67
+              },
+              "height": {
+                "mode": "fixed",
+                "value": 57.61
+              }
+            },
+            "intrinsicSize": {
+              "width": 410.67,
+              "height": 57.61
+            },
+            "frame": {
+              "left": 828,
+              "top": 571.83,
+              "width": 410.67,
+              "height": 57.61
+            },
+            "snappedFrame": {
+              "left": 828,
+              "top": 571.83,
+              "width": 410.67,
+              "height": 57.61
+            },
+            "children": [],
+            "text": "Scam signals escalate",
+            "transform": "none",
+            "element": {
+              "aid": "sh/76tkvypc",
+              "id": "13",
+              "kind": "shape"
+            }
+          },
+          {
+            "path": "0.13",
+            "kind": "shape",
+            "name": "Google-Shape-340-p61-15",
+            "position": {
+              "left": 788.21,
+              "top": 574.44
+            },
+            "requestedSize": {
+              "width": {
+                "mode": "fixed",
+                "value": 22.32
+              },
+              "height": {
+                "mode": "fixed",
+                "value": 22.31
+              }
+            },
+            "intrinsicSize": {
+              "width": 22.32,
+              "height": 22.31
+            },
+            "frame": {
+              "left": 788.21,
+              "top": 574.44,
+              "width": 22.32,
+              "height": 22.31
+            },
+            "snappedFrame": {
+              "left": 788.21,
+              "top": 574.44,
+              "width": 22.32,
+              "height": 22.31
+            },
+            "children": [],
+            "geometry": "custom",
+            "element": {
+              "aid": "sh/gv2l83q9",
+              "id": "14",
+              "kind": "shape"
+            }
+          }
+        ],
+        "padding": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        },
+        "alignItems": "stretch",
+        "justifyItems": "stretch",
+        "contentFrame": {
+          "left": 0,
+          "top": 0,
+          "width": 1280,
+          "height": 720
+        },
+        "items": [
+          {
+            "path": "0.0",
+            "frame": {
+              "left": 1184.18,
+              "top": 659.24,
+              "width": 54.48,
+              "height": 25.33
+            }
+          },
+          {
+            "path": "0.1",
+            "frame": {
+              "left": 41.33,
+              "top": 36.12,
+              "width": 1197.33,
+              "height": 109.97
+            }
+          },
+          {
+            "path": "0.2",
+            "frame": {
+              "left": 41.33,
+              "top": 180.83,
+              "width": 581.33,
+              "height": 90.83
+            }
+          },
+          {
+            "path": "0.3",
+            "frame": {
+              "left": 828,
+              "top": 313.94,
+              "width": 410.67,
+              "height": 57.61
+            }
+          },
+          {
+            "path": "0.4",
+            "frame": {
+              "left": 788.21,
+              "top": 316.55,
+              "width": 22.32,
+              "height": 22.31
+            }
+          },
+          {
+            "path": "0.5",
+            "frame": {
+              "left": 41.33,
+              "top": 313.94,
+              "width": 581.33,
+              "height": 302.85
+            }
+          },
+          {
+            "path": "0.6",
+            "frame": {
+              "left": 828,
+              "top": 377.94,
+              "width": 410.67,
+              "height": 57.61
+            }
+          },
+          {
+            "path": "0.7",
+            "frame": {
+              "left": 788.21,
+              "top": 380.55,
+              "width": 22.32,
+              "height": 22.31
+            }
+          },
+          {
+            "path": "0.8",
+            "frame": {
+              "left": 828,
+              "top": 442.5,
+              "width": 410.67,
+              "height": 57.61
+            }
+          },
+          {
+            "path": "0.9",
+            "frame": {
+              "left": 788.21,
+              "top": 445.1,
+              "width": 22.32,
+              "height": 22.31
+            }
+          },
+          {
+            "path": "0.10",
+            "frame": {
+              "left": 828,
+              "top": 506.49,
+              "width": 410.67,
+              "height": 57.61
+            }
+          },
+          {
+            "path": "0.11",
+            "frame": {
+              "left": 788.21,
+              "top": 509.1,
+              "width": 22.32,
+              "height": 22.31
+            }
+          },
+          {
+            "path": "0.12",
+            "frame": {
+              "left": 828,
+              "top": 571.83,
+              "width": 410.67,
+              "height": 57.61
+            }
+          },
+          {
+            "path": "0.13",
+            "frame": {
+              "left": 788.21,
+              "top": 574.44,
+              "width": 22.32,
+              "height": 22.31
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

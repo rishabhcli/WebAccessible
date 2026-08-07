@@ -1,0 +1,913 @@
+{
+  "schema": "openai.presentation.layout/v4",
+  "unit": "px",
+  "slide": {
+    "aid": "sl/flas8v",
+    "id": "flas8v",
+    "slide": 11,
+    "layoutId": "b2e98d7a-4b74-42bc-a02b-cdd7880d1fc1",
+    "layoutName": "Title Slide",
+    "layoutType": "title",
+    "masterLayoutId": "39ba88c1-b5ec-454d-9c88-2d14dab206f4",
+    "masterLayoutName": "Master",
+    "frame": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "theme": {
+    "colorSchemeName": "ChatGPT",
+    "colors": {
+      "accent1": "#156082",
+      "accent2": "#E97132",
+      "accent3": "#196B24",
+      "accent4": "#0F9ED5",
+      "accent5": "#A02B93",
+      "accent6": "#4EA72E",
+      "bg1": "#FFFFFF",
+      "bg2": "#000000",
+      "tx1": "#1F1F1F",
+      "tx2": "#FFFFFF",
+      "dk1": "#000000",
+      "lt1": "#FFFFFF",
+      "dk2": "#0E2841",
+      "lt2": "#E8E8E8",
+      "hlink": "#467886",
+      "folHlink": "#96607D"
+    },
+    "typefaces": [
+      "Arial",
+      "Helvetica Neue"
+    ]
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "b2e98d7a-4b74-42bc-a02b-cdd7880d1fc1",
+      "name": "Title Slide",
+      "type": "title",
+      "parentLayoutId": "39ba88c1-b5ec-454d-9c88-2d14dab206f4",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "39ba88c1-b5ec-454d-9c88-2d14dab206f4",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/6tsb2143",
+      "id": "1",
+      "name": "Google-Shape-532-p58-2",
+      "bbox": [
+        1184.18,
+        659.24,
+        54.48,
+        25.33
+      ],
+      "composeSource": {
+        "run": 1,
+        "path": "0.0"
+      },
+      "geometry": "rect",
+      "text": "11",
+      "textPreview": "11",
+      "resolvedFontSize": 13.33,
+      "resolvedTextStyle": {
+        "anchor": 3,
+        "fontSize": 13.33,
+        "typeface": "Helvetica Neue",
+        "color": "#000000",
+        "alignment": "right",
+        "verticalAlignment": "bottom",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "11"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "11",
+          "resolvedTextStyle": {
+            "anchor": 3,
+            "fontSize": 13.33,
+            "typeface": "Helvetica Neue",
+            "color": "#000000",
+            "alignment": "right",
+            "verticalAlignment": "bottom",
+            "wrap": "square",
+            "autoFit": "none",
+            "insets": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "11",
+              "anchor": 3,
+              "fontSize": 13.33,
+              "typeface": "Helvetica Neue",
+              "color": "#000000",
+              "alignment": "right",
+              "verticalAlignment": "bottom",
+              "wrap": "square",
+              "autoFit": "none",
+              "insets": {
+                "top": 0,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+              }
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/tg3uxgne",
+      "id": "2",
+      "name": "Google-Shape-533-p58-3",
+      "bbox": [
+        41.33,
+        36.12,
+        1197.33,
+        109.97
+      ],
+      "composeSource": {
+        "run": 1,
+        "path": "0.1"
+      },
+      "geometry": "rect",
+      "text": "The cloud stack separates execution, memory, and evidence.",
+      "textPreview": "The cloud stack separates execution, memory, and evidence.",
+      "resolvedFontSize": 38.67,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 38.67,
+        "typeface": "Helvetica Neue",
+        "color": "#000000",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "The cloud stack separates execution, memory, and"
+          },
+          {
+            "index": 2,
+            "text": "evidence."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "The cloud stack separates execution, memory, and evidence.",
+          "lineSpacingPercent": 100000,
+          "resolvedTextStyle": {
+            "anchor": 1,
+            "fontSize": 38.67,
+            "typeface": "Helvetica Neue",
+            "color": "#000000",
+            "alignment": "left",
+            "verticalAlignment": "top",
+            "wrap": "square",
+            "autoFit": "none",
+            "insets": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "The cloud stack separates execution, memory, and evidence.",
+              "fontSize": 48,
+              "typeface": "Arial",
+              "color": "#17201B",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 3,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/sfut4bmt",
+      "id": "3",
+      "name": "Google-Shape-534-p58-4",
+      "bbox": [
+        41.33,
+        353.33,
+        374.67,
+        276
+      ],
+      "composeSource": {
+        "run": 1,
+        "path": "0.2"
+      },
+      "geometry": "rect",
+      "text": "Browserbase\nManaged Chrome execution with a participant-visible Live View and server-side CDP control.",
+      "textPreview": "Browserbase | Managed Chrome execution with a participant-visible Live View and server-side CDP control.",
+      "resolvedFontSize": 32,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 32,
+        "typeface": "Helvetica Neue",
+        "color": "#000000",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 4,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Browserbase"
+          },
+          {
+            "index": 2,
+            "text": "Managed Chrome execution with a"
+          },
+          {
+            "index": 3,
+            "text": "participant-visible Live View and"
+          },
+          {
+            "index": 4,
+            "text": "server-side CDP control."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Browserbase",
+          "lineSpacingPercent": 100000,
+          "spaceAfter": 700,
+          "resolvedTextStyle": {
+            "anchor": 1,
+            "fontSize": 32,
+            "typeface": "Helvetica Neue",
+            "color": "#000000",
+            "alignment": "left",
+            "verticalAlignment": "top",
+            "wrap": "square",
+            "autoFit": "none",
+            "insets": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Browserbase",
+              "fontSize": 27,
+              "typeface": "Arial",
+              "color": "#173F32",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        },
+        {
+          "index": 2,
+          "text": "Managed Chrome execution with a participant-visible Live View and server-side CDP control.",
+          "lineSpacingPercent": 100000,
+          "resolvedTextStyle": {
+            "anchor": 1,
+            "fontSize": 32,
+            "typeface": "Helvetica Neue",
+            "color": "#000000",
+            "alignment": "left",
+            "verticalAlignment": "top",
+            "wrap": "square",
+            "autoFit": "none",
+            "insets": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Managed Chrome execution with a participant-visible Live View and server-side CDP control.",
+              "fontSize": 20,
+              "typeface": "Arial",
+              "color": "#55635B"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 4,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/jq1sr65c",
+      "id": "4",
+      "name": "Content-Placeholder-1-5",
+      "bbox": [
+        864,
+        353.33,
+        374.67,
+        276
+      ],
+      "composeSource": {
+        "run": 1,
+        "path": "0.3"
+      },
+      "geometry": "rect",
+      "text": "Snowflake + Cortex\nPlanning for cold runs, synchronized telemetry, and cost evidence from actual usage.",
+      "textPreview": "Snowflake + Cortex | Planning for cold runs, synchronized telemetry, and cost evidence from actual usage.",
+      "resolvedFontSize": 32,
+      "resolvedTextStyle": {
+        "fontSize": 32,
+        "typeface": "Helvetica Neue",
+        "color": "#000000",
+        "alignment": "left",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "textLayout": {
+        "lineCount": 4,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Snowflake + Cortex"
+          },
+          {
+            "index": 2,
+            "text": "Planning for cold runs, synchronized"
+          },
+          {
+            "index": 3,
+            "text": "telemetry, and cost evidence from"
+          },
+          {
+            "index": 4,
+            "text": "actual usage."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Snowflake + Cortex",
+          "lineSpacingPercent": 100000,
+          "spaceAfter": 700,
+          "resolvedTextStyle": {
+            "fontSize": 32,
+            "typeface": "Helvetica Neue",
+            "color": "#000000",
+            "alignment": "left",
+            "autoFit": "shrinkText",
+            "insets": {
+              "top": 4.8,
+              "right": 9.6,
+              "bottom": 4.8,
+              "left": 9.6
+            }
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Snowflake + Cortex",
+              "fontSize": 27,
+              "typeface": "Arial",
+              "color": "#173F32",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        },
+        {
+          "index": 2,
+          "text": "Planning for cold runs, synchronized telemetry, and cost evidence from actual usage.",
+          "lineSpacingPercent": 100000,
+          "resolvedTextStyle": {
+            "fontSize": 32,
+            "typeface": "Helvetica Neue",
+            "color": "#000000",
+            "alignment": "left",
+            "autoFit": "shrinkText",
+            "insets": {
+              "top": 4.8,
+              "right": 9.6,
+              "bottom": 4.8,
+              "left": 9.6
+            }
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Planning for cold runs, synchronized telemetry, and cost evidence from actual usage.",
+              "fontSize": 20,
+              "typeface": "Arial",
+              "color": "#55635B"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    },
+    {
+      "order": 5,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ipsby14r",
+      "id": "5",
+      "name": "Content-Placeholder-2-6",
+      "bbox": [
+        452.67,
+        353.33,
+        374.67,
+        276
+      ],
+      "composeSource": {
+        "run": 1,
+        "path": "0.4"
+      },
+      "geometry": "rect",
+      "text": "EverOS\nDurable episodes, readable routines, and user-owned context for recall and suggestions.",
+      "textPreview": "EverOS | Durable episodes, readable routines, and user-owned context for recall and suggestions.",
+      "resolvedFontSize": 32,
+      "resolvedTextStyle": {
+        "fontSize": 32,
+        "typeface": "Helvetica Neue",
+        "color": "#000000",
+        "alignment": "left",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "textLayout": {
+        "lineCount": 4,
+        "lines": [
+          {
+            "index": 1,
+            "text": "EverOS"
+          },
+          {
+            "index": 2,
+            "text": "Durable episodes, readable routines,"
+          },
+          {
+            "index": 3,
+            "text": "and user-owned context for recall and"
+          },
+          {
+            "index": 4,
+            "text": "suggestions."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "EverOS",
+          "lineSpacingPercent": 100000,
+          "spaceAfter": 700,
+          "resolvedTextStyle": {
+            "fontSize": 32,
+            "typeface": "Helvetica Neue",
+            "color": "#000000",
+            "alignment": "left",
+            "autoFit": "shrinkText",
+            "insets": {
+              "top": 4.8,
+              "right": 9.6,
+              "bottom": 4.8,
+              "left": 9.6
+            }
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "EverOS",
+              "fontSize": 27,
+              "typeface": "Arial",
+              "color": "#173F32",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        },
+        {
+          "index": 2,
+          "text": "Durable episodes, readable routines, and user-owned context for recall and suggestions.",
+          "lineSpacingPercent": 100000,
+          "resolvedTextStyle": {
+            "fontSize": 32,
+            "typeface": "Helvetica Neue",
+            "color": "#000000",
+            "alignment": "left",
+            "autoFit": "shrinkText",
+            "insets": {
+              "top": 4.8,
+              "right": 9.6,
+              "bottom": 4.8,
+              "left": 9.6
+            }
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Durable episodes, readable routines, and user-owned context for recall and suggestions.",
+              "fontSize": 20,
+              "typeface": "Arial",
+              "color": "#55635B"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ]
+    }
+  ],
+  "composeRuns": [
+    {
+      "index": 1,
+      "frame": {
+        "left": 0,
+        "top": 0,
+        "width": 1280,
+        "height": 720
+      },
+      "baseUnit": 1,
+      "root": {
+        "path": "0",
+        "kind": "layers",
+        "name": "codex-grid-layout-library#slide-06",
+        "requestedSize": {
+          "width": {
+            "mode": "fill",
+            "value": 1
+          },
+          "height": {
+            "mode": "fill",
+            "value": 1
+          }
+        },
+        "intrinsicSize": {
+          "width": 1238.67,
+          "height": 684.57
+        },
+        "frame": {
+          "left": 0,
+          "top": 0,
+          "width": 1280,
+          "height": 720
+        },
+        "children": [
+          {
+            "path": "0.0",
+            "kind": "text",
+            "name": "Google-Shape-532-p58-2",
+            "position": {
+              "left": 1184.18,
+              "top": 659.24
+            },
+            "requestedSize": {
+              "width": {
+                "mode": "fixed",
+                "value": 54.48
+              },
+              "height": {
+                "mode": "fixed",
+                "value": 25.33
+              }
+            },
+            "intrinsicSize": {
+              "width": 54.48,
+              "height": 25.33
+            },
+            "frame": {
+              "left": 1184.18,
+              "top": 659.24,
+              "width": 54.48,
+              "height": 25.33
+            },
+            "snappedFrame": {
+              "left": 1184.18,
+              "top": 659.24,
+              "width": 54.48,
+              "height": 25.33
+            },
+            "children": [],
+            "text": "11",
+            "transform": "none",
+            "element": {
+              "aid": "sh/6tsb2143",
+              "id": "1",
+              "kind": "shape"
+            }
+          },
+          {
+            "path": "0.1",
+            "kind": "text",
+            "name": "Google-Shape-533-p58-3",
+            "position": {
+              "left": 41.33,
+              "top": 36.12
+            },
+            "requestedSize": {
+              "width": {
+                "mode": "fixed",
+                "value": 1197.33
+              },
+              "height": {
+                "mode": "fixed",
+                "value": 109.97
+              }
+            },
+            "intrinsicSize": {
+              "width": 1197.33,
+              "height": 109.97
+            },
+            "frame": {
+              "left": 41.33,
+              "top": 36.12,
+              "width": 1197.33,
+              "height": 109.97
+            },
+            "snappedFrame": {
+              "left": 41.33,
+              "top": 36.12,
+              "width": 1197.33,
+              "height": 109.97
+            },
+            "children": [],
+            "text": "The cloud stack separates execution, memory, and evidence.",
+            "transform": "none",
+            "element": {
+              "aid": "sh/tg3uxgne",
+              "id": "2",
+              "kind": "shape"
+            }
+          },
+          {
+            "path": "0.2",
+            "kind": "text",
+            "name": "Google-Shape-534-p58-4",
+            "position": {
+              "left": 41.33,
+              "top": 353.33
+            },
+            "requestedSize": {
+              "width": {
+                "mode": "fixed",
+                "value": 374.67
+              },
+              "height": {
+                "mode": "fixed",
+                "value": 276
+              }
+            },
+            "intrinsicSize": {
+              "width": 374.67,
+              "height": 276
+            },
+            "frame": {
+              "left": 41.33,
+              "top": 353.33,
+              "width": 374.67,
+              "height": 276
+            },
+            "snappedFrame": {
+              "left": 41.33,
+              "top": 353.33,
+              "width": 374.67,
+              "height": 276
+            },
+            "children": [],
+            "text": "Browserbase\nManaged Chrome execution with a participant-visible Live View and server-side CDP control.",
+            "transform": "none",
+            "element": {
+              "aid": "sh/sfut4bmt",
+              "id": "3",
+              "kind": "shape"
+            }
+          },
+          {
+            "path": "0.3",
+            "kind": "text",
+            "name": "Content-Placeholder-1-5",
+            "position": {
+              "left": 864,
+              "top": 353.33
+            },
+            "requestedSize": {
+              "width": {
+                "mode": "fixed",
+                "value": 374.67
+              },
+              "height": {
+                "mode": "fixed",
+                "value": 276
+              }
+            },
+            "intrinsicSize": {
+              "width": 374.67,
+              "height": 276
+            },
+            "frame": {
+              "left": 864,
+              "top": 353.33,
+              "width": 374.67,
+              "height": 276
+            },
+            "snappedFrame": {
+              "left": 864,
+              "top": 353.33,
+              "width": 374.67,
+              "height": 276
+            },
+            "children": [],
+            "text": "Snowflake + Cortex\nPlanning for cold runs, synchronized telemetry, and cost evidence from actual usage.",
+            "transform": "none",
+            "element": {
+              "aid": "sh/jq1sr65c",
+              "id": "4",
+              "kind": "shape"
+            }
+          },
+          {
+            "path": "0.4",
+            "kind": "text",
+            "name": "Content-Placeholder-2-6",
+            "position": {
+              "left": 452.67,
+              "top": 353.33
+            },
+            "requestedSize": {
+              "width": {
+                "mode": "fixed",
+                "value": 374.67
+              },
+              "height": {
+                "mode": "fixed",
+                "value": 276
+              }
+            },
+            "intrinsicSize": {
+              "width": 374.67,
+              "height": 276
+            },
+            "frame": {
+              "left": 452.67,
+              "top": 353.33,
+              "width": 374.67,
+              "height": 276
+            },
+            "snappedFrame": {
+              "left": 452.67,
+              "top": 353.33,
+              "width": 374.67,
+              "height": 276
+            },
+            "children": [],
+            "text": "EverOS\nDurable episodes, readable routines, and user-owned context for recall and suggestions.",
+            "transform": "none",
+            "element": {
+              "aid": "sh/ipsby14r",
+              "id": "5",
+              "kind": "shape"
+            }
+          }
+        ],
+        "padding": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        },
+        "alignItems": "stretch",
+        "justifyItems": "stretch",
+        "contentFrame": {
+          "left": 0,
+          "top": 0,
+          "width": 1280,
+          "height": 720
+        },
+        "items": [
+          {
+            "path": "0.0",
+            "frame": {
+              "left": 1184.18,
+              "top": 659.24,
+              "width": 54.48,
+              "height": 25.33
+            }
+          },
+          {
+            "path": "0.1",
+            "frame": {
+              "left": 41.33,
+              "top": 36.12,
+              "width": 1197.33,
+              "height": 109.97
+            }
+          },
+          {
+            "path": "0.2",
+            "frame": {
+              "left": 41.33,
+              "top": 353.33,
+              "width": 374.67,
+              "height": 276
+            }
+          },
+          {
+            "path": "0.3",
+            "frame": {
+              "left": 864,
+              "top": 353.33,
+              "width": 374.67,
+              "height": 276
+            }
+          },
+          {
+            "path": "0.4",
+            "frame": {
+              "left": 452.67,
+              "top": 353.33,
+              "width": 374.67,
+              "height": 276
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+Deck: WebAccessible — Application Overview
+Repository revision: 64fc387 (Bug fixes)
+Created: 2026-08-07
+
+Primary product sources
+- C:\Users\might\OneDrive\Documents\GitHub\WebAccessible\README.md
+- C:\Users\might\OneDrive\Documents\GitHub\WebAccessible\AGENTS.md
+- C:\Users\might\OneDrive\Documents\GitHub\WebAccessible\web\src\App.tsx
+- C:\Users\might\OneDrive\Documents\GitHub\WebAccessible\web\src\agent\TaskLauncher.tsx
+- C:\Users\might\OneDrive\Documents\GitHub\WebAccessible\web\src\agent\AgentDashboard.tsx
+- C:\Users\might\OneDrive\Documents\GitHub\WebAccessible\web\src\caregiver\CaregiverView.tsx
+
+App screenshots captured from the locally built application at http://127.0.0.1:8000/
+- assets/landing.png — public landing page
+- assets/participant.png — passwordless participant task launcher
+- assets/caregiver.png — caregiver console and live provider status
+
+No externally sourced claims or visual assets are used.

@@ -1,0 +1,14 @@
+Communication job: By the end, a product, sponsor, or demo audience should understand how WebAccessible turns a plain-language errand into a visible autonomous browser run, why the experience is approachable for older adults, where human control remains, and how the caregiver/memory/cloud layers support trust.
+
+Narrative arc
+1. Introduce the product with the actual landing experience.
+2. Establish why conventional websites fail the intended user.
+3. Show the participant’s passwordless task launcher.
+4. Explain the visible agent run in three stages.
+5. Make the surviving safety boundaries explicit.
+6. Show the caregiver console and cloud evidence.
+7. Explain grounded recall and proactive reminders.
+8. Map the sponsor stack to product responsibilities.
+9. Close on the product promise.
+
+Visual approach: Codex Grid’s restrained white canvas, strong black typography, and thin rules, with WebAccessible forest green as the single accent. Current application screenshots are the primary evidence.
