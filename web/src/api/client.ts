@@ -360,7 +360,7 @@ class WebAccessibleApi {
   }
 
   async createParticipantSession(input: ParticipantSessionInput): Promise<ParticipantContext> {
-    const participantName = input.participant_name ?? input.caregiver_name ?? "Caregiver";
+    const participantName = input.caregiver_name ?? (input.role === "participant" ? "WebAccessible user" : "Caregiver");
     const requestBody = {
       user_id: input.user_id,
       participant_name: participantName,
@@ -384,7 +384,7 @@ class WebAccessibleApi {
     const context: ParticipantContext = {
       participantSessionId,
       userId,
-      displayName: stringValue(value, "display_name", "participant_name", "caregiver_name") ?? input.participant_name ?? input.caregiver_name ?? "User",
+      displayName: stringValue(value, "display_name", "participant_name", "caregiver_name") ?? input.caregiver_name ?? (input.role === "participant" ? "Participant" : "Caregiver"),
       role: stringValue(value, "role") === "caregiver" ? "caregiver" : "participant",
       accessToken: stringValue(value, "access_token", "token"),
       readingSize: input.preferences?.reading_size ?? "large",

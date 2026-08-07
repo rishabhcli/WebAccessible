@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { HeartHandshake, House, LogOut, MousePointer2, UserRound } from "lucide-react";
 import { api } from "./api/client";
 import type { ParticipantContext, ReadinessSnapshot, Routine, SessionSnapshot } from "./api/types";
@@ -7,10 +7,10 @@ import { LandingPage } from "./landing/LandingPage";
 import { RoutineChooser } from "./routines/RoutineChooser";
 import { ParticipantSession } from "./session/ParticipantSession";
 import { ProviderStatus } from "./shared/ProviderStatus";
-import { SetupView } from "./setup/SetupView";
 
 const PARTICIPANT_STORAGE_KEY = "webaccessible.participant-session";
 const CAREGIVER_STORAGE_KEY = "webaccessible.caregiver-session";
+const PARTICIPANT_USER_ID_KEY = "webaccessible.participantUserId";
 
 type AppView = "landing" | "participant" | "caregiver";
 
@@ -37,6 +37,14 @@ function initialView(): AppView {
   return "landing";
 }
 
+function participantUserId(): string {
+  const existing = window.localStorage.getItem(PARTICIPANT_USER_ID_KEY);
+  if (existing && /^wa-[0-9a-f-]{36}$/.test(existing)) return existing;
+  const created = `wa-${crypto.randomUUID()}`;
+  window.localStorage.setItem(PARTICIPANT_USER_ID_KEY, created);
+  return created;
+}
+
 export default function App() {
   const [view, setView] = useState<AppView>(initialView);
   const [participant, setParticipant] = useState<ParticipantContext | undefined>(() => readContext(PARTICIPANT_STORAGE_KEY));
@@ -44,9 +52,12 @@ export default function App() {
   const [activeSession, setActiveSession] = useState<ActiveSession>();
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string>();
+  const [participantLoading, setParticipantLoading] = useState(false);
+  const [participantError, setParticipantError] = useState<string>();
   const [readiness, setReadiness] = useState<ReadinessSnapshot>();
   const [readinessLoading, setReadinessLoading] = useState(true);
   const [readinessError, setReadinessError] = useState<string>();
+  const participantBootstrap = useRef<Promise<void> | null>(null);
 
   const activeContext = view === "caregiver" ? caregiver : participant;
   // Keep the shared API client in sync before child effects start loading protected data.
@@ -85,12 +96,44 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "auto" });
   };
 
-  const acceptParticipant = (context: ParticipantContext) => {
-    setParticipant(context);
-    window.sessionStorage.setItem(PARTICIPANT_STORAGE_KEY, JSON.stringify(context));
-    api.setAccessToken(context.accessToken);
-    navigate("participant");
-  };
+  const openGuestParticipant = useCallback(async () => {
+    if (participantBootstrap.current) return participantBootstrap.current;
+    setParticipantLoading(true);
+    setParticipantError(undefined);
+
+    const request = (async () => {
+      try {
+        const context = await api.createParticipantSession({
+          user_id: participantUserId(),
+          role: "participant",
+          preferences: {
+            reading_size: "large",
+            voice_enabled: true,
+            activity_memory_enabled: false,
+            proactive_reminders_enabled: false,
+          },
+        });
+        setParticipant(context);
+        window.sessionStorage.setItem(PARTICIPANT_STORAGE_KEY, JSON.stringify(context));
+        api.setAccessToken(context.accessToken);
+      } catch (reason) {
+        setParticipantError(reason instanceof Error ? reason.message : "Your tasks could not be opened.");
+      } finally {
+        setParticipantLoading(false);
+      }
+    })();
+
+    participantBootstrap.current = request;
+    try {
+      await request;
+    } finally {
+      if (participantBootstrap.current === request) participantBootstrap.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (view === "participant" && !participant) void openGuestParticipant();
+  }, [openGuestParticipant, participant, view]);
 
   const acceptCaregiver = (context: ParticipantContext) => {
     setCaregiver(context);
@@ -99,11 +142,9 @@ export default function App() {
     navigate("caregiver");
   };
 
-  const signOut = () => {
-    const key = view === "caregiver" ? CAREGIVER_STORAGE_KEY : PARTICIPANT_STORAGE_KEY;
-    window.sessionStorage.removeItem(key);
-    if (view === "caregiver") setCaregiver(undefined);
-    else setParticipant(undefined);
+  const signOutCaregiver = () => {
+    window.sessionStorage.removeItem(CAREGIVER_STORAGE_KEY);
+    setCaregiver(undefined);
     api.setAccessToken(undefined);
   };
 
@@ -181,7 +222,7 @@ export default function App() {
     <div className={`app ${readingClass}`}>
       <a className="skip-link" href="#main-content">Skip to main content</a>
       {view === "landing" ? (
-        <LandingPage hasParticipant={Boolean(participant)} onCaregiver={() => navigate("caregiver")} onStart={() => navigate("participant")} />
+        <LandingPage onCaregiver={() => navigate("caregiver")} onStart={() => navigate("participant")} />
       ) : (
         <>
           <header className={`app-header app-header--${view}`}>
@@ -199,8 +240,8 @@ export default function App() {
                 </nav>
               ) : null}
               {view === "caregiver" ? <ProviderStatus error={readinessError} loading={readinessLoading} onRefresh={() => void loadReadiness()} readiness={readiness} /> : null}
-              {activeContext && !activeSession ? (
-                <button aria-label="End this signed-in session" className="icon-button" onClick={signOut} title="Sign out" type="button"><LogOut aria-hidden="true" size={21} /></button>
+              {view === "caregiver" && caregiver && !activeSession ? (
+                <button aria-label="End this signed-in session" className="icon-button" onClick={signOutCaregiver} title="Sign out" type="button"><LogOut aria-hidden="true" size={21} /></button>
               ) : null}
             </div>
           </header>
@@ -220,7 +261,28 @@ export default function App() {
           ) : participant ? (
             <RoutineChooser onStart={startRoutine} onStartReminder={startReminder} participant={participant} startError={startError} starting={starting} />
           ) : (
-            <SetupView onCaregiver={() => navigate("caregiver")} onComplete={acceptParticipant} />
+            <main className="participant-entry" id="main-content">
+              <div className="participant-entry__card" role={participantError ? "alert" : "status"}>
+                {participantError ? (
+                  <>
+                    <h1>Your tasks could not be opened.</h1>
+                    <p>{participantError}</p>
+                    <div className="participant-entry__actions">
+                      <button className="button button--primary button--large" disabled={participantLoading} onClick={() => void openGuestParticipant()} type="button">
+                        {participantLoading ? "Opening" : "Try again"}
+                      </button>
+                      <button className="button button--quiet" onClick={() => navigate("caregiver")} type="button">Caregiver console</button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <span className="large-spinner" aria-hidden="true" />
+                    <h1>Opening your tasks…</h1>
+                    <p>No sign-up needed.</p>
+                  </>
+                )}
+              </div>
+            </main>
           )}
         </>
       )}

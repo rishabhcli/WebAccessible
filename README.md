@@ -56,13 +56,14 @@ memory layer.
 **Unified website**
 
 - A simple public landing page routes older adults and caregivers into their dedicated spaces.
-- The older-adult experience uses large controls, plain language, and progressive disclosure.
+- The older-adult experience opens directly into a scoped guest session with large controls,
+  plain language, and no participant sign-up form.
 - The caregiver console shows safe live readiness for Browserbase, EverOS, Snowflake, and
   Snowflake Cortex without exposing provider keys to the browser.
 
 **Participant UI**
 
-- Accessible setup for reading size, voice, and caregiver contact preference.
+- Automatic passwordless guest entry with large text and voice guidance defaults.
 - Routine chooser backed by EverOS plus a reviewed W3C starter task.
 - Embedded Browserbase Live View with one-step guidance, target highlighting, help, dismiss,
   voice output, retry, and stop controls.
@@ -109,7 +110,6 @@ backend/app/
   services/            orchestration, guidance, replay, repair, telemetry, cost
 web/src/
   landing/             public welcome and role entry points
-  setup/               participant setup
   routines/            routine selection
   session/             Live View and guidance experience
   caregiver/           history, costs, notes, and routine evidence

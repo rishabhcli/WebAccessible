@@ -11,12 +11,11 @@ import {
 } from "lucide-react";
 
 interface LandingPageProps {
-  hasParticipant: boolean;
   onCaregiver: () => void;
   onStart: () => void;
 }
 
-export function LandingPage({ hasParticipant, onCaregiver, onStart }: LandingPageProps) {
+export function LandingPage({ onCaregiver, onStart }: LandingPageProps) {
   return (
     <main className="welcome-page" id="main-content">
       <nav className="welcome-nav" aria-label="Primary navigation">
@@ -37,7 +36,7 @@ export function LandingPage({ hasParticipant, onCaregiver, onStart }: LandingPag
           <div className="welcome-actions">
             <button className="welcome-button welcome-button--primary" onClick={onStart} type="button">
               <UserRound aria-hidden="true" size={23} />
-              {hasParticipant ? "Open my tasks" : "Set up my help"}
+              Open my tasks
               <ArrowRight aria-hidden="true" size={22} />
             </button>
             <button className="welcome-button welcome-button--secondary" onClick={onCaregiver} type="button">
@@ -106,7 +105,7 @@ export function LandingPage({ hasParticipant, onCaregiver, onStart }: LandingPag
         <div className="welcome-choose__actions">
           <button className="welcome-destination welcome-destination--person" onClick={onStart} type="button">
             <span><UserRound aria-hidden="true" size={28} /></span>
-            <div><strong>{hasParticipant ? "My tasks" : "For the person browsing"}</strong><small>Large, simple guidance for everyday websites</small></div>
+            <div><strong>My tasks</strong><small>Large, simple guidance with no sign-up</small></div>
             <ArrowRight aria-hidden="true" size={24} />
           </button>
           <button className="welcome-destination" onClick={onCaregiver} type="button">

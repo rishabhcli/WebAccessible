@@ -119,7 +119,7 @@ export function RoutineChooser({ participant, onStart, onStartReminder, starting
     <main className="routine-page" id="main-content">
       <header className="page-heading page-heading--participant">
         <div>
-          <span className="eyebrow">Hello, {participant.displayName}</span>
+          <span className="eyebrow">Welcome back</span>
           <h1>What can I help with today?</h1>
         </div>
         <div className="participant-heading-actions">

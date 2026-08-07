@@ -180,7 +180,7 @@ The P0 WebAccessible session UI and FastAPI service may run locally for the stag
 
 ```text
 WebAccessible React session UI
-  setup/routines + one-step panel + safety/completion states
+  guest entry/routines + one-step panel + safety/completion states
   embedded interactive Browserbase Live View (Margaret's real input)
           |
           | authenticated versioned JSON/SSE
@@ -220,7 +220,7 @@ Hosted product deployment
 
 **WebAccessible session UI**
 
-- Owns setup/routine selection, the one-sentence guidance panel, explicit help/dismiss controls, provider/sync states, and the embedded interactive Live View.
+- Owns automatic guest entry/routine selection, the one-sentence guidance panel, explicit help/dismiss controls, provider/sync states, and the embedded interactive Live View.
 - Receives only the Live View URL and typed participant state for the authorized WebAccessible session. The Browserbase API key and CDP connection URL never enter browser JavaScript.
 - Treats `browserbase-disconnected` and stale `server_state_version` as explicit session states rather than silently reusing guidance.
 - Renders page/model/caregiver strings as text and accepts no executable script, arbitrary HTML, or synthetic target-page action.
@@ -299,7 +299,7 @@ setup -> routine_list -> observing -> help_offer -> guiding
 |   |   |   |-- GuidancePanel.tsx
 |   |   |   |-- state.ts
 |   |   |   `-- useSessionEvents.ts
-|   |   |-- setup/
+|   |   |-- routines/
 |   |   `-- shared/
 |   `-- tests/
 |       |-- unit/
@@ -599,7 +599,7 @@ The rest of the backend addresses memory by WebAccessible `user_id`; only the Ev
 
 **Consented activity and foresight**
 
-1. Separate setup switches grant activity-memory and proactive-reminder permission; reminders cannot
+1. Instant guest sessions keep activity-memory and proactive-reminder permission off; reminders cannot
    be enabled without activity memory.
 2. Each accepted managed-session event is idempotently indexed using task, safe origin, kind, outcome,
    and participant-local time. Sensitive payload values, path/query, content, and raw DOM are excluded.
@@ -745,7 +745,7 @@ Each package has explicit dependencies and a gate. A package is complete only wh
 
 - Implement Browserbase create/debug/CDP attach/terminate behind a narrow adapter that has no autonomous Agent task method.
 - Implement lifecycle ownership, session lease, maximum duration, terminal cleanup, shutdown hook, startup orphan reconciliation, and idempotent stop.
-- Build the participant session UI with authenticated setup, routine selection, interactive Live View iframe, and all P0 guidance/pause/completion/provider states using text-only rendering for external strings.
+- Build the participant session UI with automatic passwordless guest entry, routine selection, interactive Live View iframe, and all P0 guidance/pause/completion/provider states using text-only rendering for external strings.
 - Keep API key and CDP connection URL server-side. Authorize the Live View lookup by participant plus WebAccessible session and avoid logging/caching the URL.
 - Install CDP observation for each new page/document and implement bounded candidate extraction, sensitivity classification, URL redaction, candidate limits, and golden sanitized snapshots.
 - Capture trusted participant clicks/keyboard-driven activations, navigation, scroll windows, and non-sensitive form-progress booleans without capturing entered values.
@@ -1221,7 +1221,7 @@ In addition to demo release:
 
 | Spec requirement | Work packages | Primary evidence |
 |---|---|---|
-| Setup without password handling | WP-00, WP-02 | Setup UI, sink-redaction tests |
+| Guest entry without password handling | WP-00, WP-02 | Participant-entry UI, sink-redaction tests |
 | Browserbase managed execution | WP-01, WP-02, WP-09 | Owned session create/CDP/Live View/input/terminate evidence |
 | Observable stuck triggers and cooldown | WP-03 | STK boundary/concurrency suite |
 | One-step guidance and user click | WP-02, WP-04 | Browser E2E and action provenance |

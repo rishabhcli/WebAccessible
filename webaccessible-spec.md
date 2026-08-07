@@ -20,11 +20,12 @@ The user and the customer are two different people. That shapes the whole produc
 
 ## 2. The exact flow
 
-### Phase 0 — Setup (Susan, once, ~5 min)
+### Phase 0 — Open instantly
 
-1. Susan installs the Chrome extension on Margaret's laptop.
-2. Enters Margaret's first name, her own mobile number for escalation, and picks reading size + voice on/off.
-3. **Optional but great:** Susan photographs a paper water bill and uploads it. EverOS parses the PDF/image in one call and extracts the biller, account number, typical amount, due date. Those become facts before Margaret has done anything.
+1. Margaret chooses **My tasks** and goes straight into the participant experience.
+2. There is no participant sign-up, account, name, email, phone, or password form. The application creates a short-lived, scoped guest session for the browser with large text and voice guidance enabled.
+3. Activity memory and proactive reminders default to off. They may only be enabled by a separate, explicit consent control; instant entry never opts the participant in.
+4. **Optional but great:** Susan photographs a paper water bill from the caregiver console and uploads it. EverOS parses the PDF/image in one call and extracts the biller, account number, typical amount, due date. Those become facts before Margaret has done anything.
 
 **Credentials: WebAccessible never stores or handles passwords.** It relies on Chrome's existing saved logins. At a login screen it says "click your email here, your password is saved" and Margaret clicks. WebAccessible navigates; it never authenticates. This removes the single scariest objection and cuts a day of work.
 

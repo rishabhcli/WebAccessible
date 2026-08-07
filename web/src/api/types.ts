@@ -4,7 +4,6 @@ export type ParticipantRole = "participant" | "caregiver";
 export interface ParticipantSessionInput {
   user_id: string;
   role: ParticipantRole;
-  participant_name?: string;
   caregiver_name?: string;
   caregiver_mobile?: string;
   access_code?: string;
