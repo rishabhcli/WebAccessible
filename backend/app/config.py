@@ -7,7 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import AnyHttpUrl, Field, SecretStr, field_validator
+from pydantic import AnyHttpUrl, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -41,8 +41,10 @@ class Settings(BaseSettings):
 
     demo_target_name: str = "Get in line at the DMV"
     demo_target_url: AnyHttpUrl = AnyHttpUrl("https://www.dmv.ca.gov/portal/appointments/")
-    demo_fallback_url: AnyHttpUrl = AnyHttpUrl("https://www.greatclips.com/salons/online-check-in")
+    demo_fallback_url: AnyHttpUrl = AnyHttpUrl("https://booksy.com/en-us/s/haircut")
 
+    browser_execution_provider: Literal["local", "browserbase"] = "local"
+    local_browser_headless: bool = True
     browserbase_api_key: SecretStr | None = None
     browserbase_region: Literal["us-west-2", "us-east-1", "eu-central-1", "ap-southeast-1"] = (
         "us-west-2"
@@ -82,6 +84,7 @@ class Settings(BaseSettings):
     proactive_scan_interval_seconds: float = Field(default=60.0, ge=5, le=3600)
     proactive_max_overdue_intervals: float = Field(default=3.0, ge=1, le=12)
 
+    action_planner_provider: Literal["local", "snowflake_cortex"] = "local"
     guidance_model_provider: Literal["snowflake_cortex"] = "snowflake_cortex"
     guidance_model: str = "claude-haiku-4-5"
     guidance_model_rate_card_version: str = "snowflake-cortex-any-region-2026-08-07"
@@ -107,6 +110,19 @@ class Settings(BaseSettings):
         if not value:
             raise ValueError("value must not be blank")
         return value
+
+    @model_validator(mode="after")
+    def cloud_execution_is_required_outside_local_development(self) -> Settings:
+        if self.app_env in {RuntimeMode.DEMO, RuntimeMode.PRODUCTION}:
+            if self.browser_execution_provider != "browserbase":
+                raise ValueError("demo and production require Browserbase browser execution")
+            if self.action_planner_provider != "snowflake_cortex":
+                raise ValueError("demo and production require Snowflake Cortex action planning")
+        return self
+
+    @property
+    def local_browser_enabled(self) -> bool:
+        return self.browser_execution_provider == "local"
 
     @property
     def browserbase_configured(self) -> bool:

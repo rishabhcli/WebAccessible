@@ -14,7 +14,7 @@ interface BrowserFrameProps {
  * Wraps the managed browser in familiar browser chrome.
  *
  * The address bar is deliberately read-only and shows the origin plus a redacted path:
- * the real page lives in a cloud browser, and query strings there can carry personal
+ * the real page lives in an isolated browser, and query strings there can carry personal
  * details that should not be mirrored into this UI.
  */
 export function BrowserFrame({ run, liveViewUrl, taskName, connecting, error, onRetry }: BrowserFrameProps) {
@@ -68,7 +68,7 @@ export function BrowserFrame({ run, liveViewUrl, taskName, connecting, error, on
           <div className="browser-frame__placeholder" role="status">
             <span className="spinner spinner--large" />
             <h3>Opening a browser</h3>
-            <p>Starting a private cloud browser for this task.</p>
+            <p>Starting a private browser for this task.</p>
           </div>
         ) : error ? (
           <div className="browser-frame__placeholder browser-frame__placeholder--error" role="alert">

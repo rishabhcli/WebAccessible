@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from inspect import isawaitable
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
 from playwright.async_api import Browser, BrowserContext, Page, Playwright, async_playwright
@@ -39,6 +40,10 @@ _TARGETED_ACTIONS = frozenset(
 )
 
 
+class ProviderBlockedSite(RuntimeError):
+    """The execution provider replaced the requested site with a refusal page."""
+
+
 @dataclass(frozen=True, slots=True)
 class ActionOutcome:
     """The result of one attempted page action."""
@@ -58,6 +63,27 @@ class PageState:
     origin: str
     redacted_path: str
     title: str | None = None
+    # True when the managed browser refused the destination and is showing its own
+    # interstitial instead of the requested site.
+    blocked: bool = False
+
+
+# Browserbase serves this page when its navigation policy refuses a destination. It is a
+# real, scrapeable page on the provider's own domain, so without this check the agent
+# happily plans clicks against Browserbase's marketing navigation.
+_PROVIDER_BLOCK_HOSTS = frozenset({"browserbase.com", "www.browserbase.com"})
+_PROVIDER_BLOCK_MARKERS = ("navigation-blocked", "navigation_blocked")
+
+
+def is_provider_block(url: str, title: str | None = None) -> bool:
+    """Whether the managed browser is showing its own navigation-refused interstitial."""
+
+    parsed = urlsplit(url)
+    if parsed.netloc.lower() in _PROVIDER_BLOCK_HOSTS and any(
+        marker in parsed.path.lower() for marker in _PROVIDER_BLOCK_MARKERS
+    ):
+        return True
+    return title is not None and "navigation blocked" in title.casefold()
 
 
 async def _title(page: Page) -> str | None:
@@ -105,6 +131,7 @@ class BrowserRuntime:
     page_instance_id: UUID = field(default_factory=uuid4)
     sequence_no: int = 0
     selector_cache: dict[str, str] = field(default_factory=dict)
+    io_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     active_callbacks: int = 0
     callbacks_idle: asyncio.Event = field(default_factory=asyncio.Event)
     navigation_handler: Callable[[Any], None] | None = None
@@ -113,7 +140,7 @@ class BrowserRuntime:
 
 
 class BrowserController:
-    """Observe/highlight/verify-only bridge for managed Browserbase sessions."""
+    """Observe and act through the selected isolated browser execution provider."""
 
     def __init__(
         self,
@@ -156,12 +183,18 @@ class BrowserController:
             if not provider_id or not connect_url:
                 if provider_id:
                     await self._maybe_await(self.adapter.terminate(provider_id))
-                raise RuntimeError("Browserbase did not return a managed session and CDP endpoint")
+                raise RuntimeError("The browser provider did not return a session and CDP endpoint")
 
+            playwright: Playwright | None = None
+            browser: Browser | None = None
             try:
                 live_view_url = await self._maybe_await(self.adapter.get_live_view(provider_id))
                 playwright = await async_playwright().start()
-                browser = await playwright.chromium.connect_over_cdp(str(connect_url))
+                connector = getattr(self.adapter, "connect_browser", None)
+                if connector is None:
+                    browser = await playwright.chromium.connect_over_cdp(str(connect_url))
+                else:
+                    browser = await self._maybe_await(connector(playwright, created))
                 context = browser.contexts[0] if browser.contexts else await browser.new_context()
                 page = context.pages[0] if context.pages else await context.new_page()
                 runtime = BrowserRuntime(
@@ -186,7 +219,31 @@ class BrowserController:
                     except Exception:
                         pass
                 await self.snapshot(web_session_id)
+                state = await self.page_state(web_session_id)
+                if state.blocked:
+                    raise ProviderBlockedSite("the browser provider refused the requested site")
             except Exception:
+                failed_runtime = self._runtimes.pop(web_session_id, None)
+                if failed_runtime is not None:
+                    try:
+                        await failed_runtime.browser.close()
+                    except Exception:
+                        pass
+                    try:
+                        await failed_runtime.playwright.stop()
+                    except Exception:
+                        pass
+                else:
+                    if browser is not None:
+                        try:
+                            await browser.close()
+                        except Exception:
+                            pass
+                    if playwright is not None:
+                        try:
+                            await playwright.stop()
+                        except Exception:
+                            pass
                 await self._maybe_await(self.adapter.terminate(provider_id))
                 raise
 
@@ -202,6 +259,22 @@ class BrowserController:
     async def live_view(self, web_session_id: UUID) -> str:
         runtime = self._require(web_session_id)
         return runtime.live_view_url
+
+    async def screenshot(self, provider_session_id: str) -> bytes:
+        """Capture the current local-browser frame for the development Live View."""
+
+        runtime = next(
+            (
+                item
+                for item in self._runtimes.values()
+                if item.provider_session_id == provider_session_id
+            ),
+            None,
+        )
+        if runtime is None:
+            raise KeyError(f"no attached browser session {provider_session_id}")
+        async with runtime.io_lock:
+            return await runtime.page.screenshot(type="png", animations="disabled")
 
     async def snapshot(self, web_session_id: UUID) -> list[ElementCandidate]:
         runtime = self._require(web_session_id)
@@ -309,15 +382,17 @@ class BrowserController:
         )
 
     async def page_state(self, web_session_id: UUID) -> PageState:
-        """Return the chrome-visible page state: title, origin, redacted path, history depth."""
+        """Return the chrome-visible page state: title, origin, redacted path, blocked."""
 
         runtime = self._require(web_session_id)
         page = runtime.page
         origin, path = origin_and_path(page.url)
+        title = await _title(page)
         return PageState(
             origin=origin,
             redacted_path=path,
-            title=await _title(page),
+            title=title,
+            blocked=is_provider_block(page.url, title),
         )
 
     async def go_back(self, web_session_id: UUID) -> bool:
@@ -351,14 +426,15 @@ class BrowserController:
                     runtime.page.remove_listener("framenavigated", runtime.navigation_handler)
                 if runtime.event_tasks:
                     await asyncio.gather(*runtime.event_tasks, return_exceptions=True)
-                try:
-                    await runtime.browser.close()
-                except Exception:
-                    pass
-                try:
-                    await runtime.playwright.stop()
-                except Exception:
-                    pass
+                async with runtime.io_lock:
+                    try:
+                        await runtime.browser.close()
+                    except Exception:
+                        pass
+                    try:
+                        await runtime.playwright.stop()
+                    except Exception:
+                        pass
             try:
                 stopped = bool(await self._maybe_await(self.adapter.terminate(provider_id)))
             except Exception:
@@ -506,7 +582,7 @@ class BrowserController:
     def _require(self, web_session_id: UUID) -> BrowserRuntime:
         runtime = self._runtimes.get(web_session_id)
         if runtime is None:
-            raise KeyError(f"no attached Browserbase session for {web_session_id}")
+            raise KeyError(f"no attached browser session for {web_session_id}")
         return runtime
 
     @staticmethod

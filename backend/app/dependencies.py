@@ -11,11 +11,12 @@ from backend.app.contracts.models import EventEnvelope
 from backend.app.domain.safety import SafetyPolicy
 from backend.app.integrations.browserbase import BrowserbaseAdapter
 from backend.app.integrations.everos import EverOSAdapter
+from backend.app.integrations.local_browser import LocalBrowserAdapter
 from backend.app.integrations.model import CortexGuidanceAdapter
 from backend.app.integrations.snowflake import SnowflakeAdapter
 from backend.app.persistence.repository import OperationalRepository
 from backend.app.services.auth import ParticipantAuthService
-from backend.app.services.autopilot import AutopilotService, CortexActionPlanner
+from backend.app.services.autopilot import AutopilotService, CortexActionPlanner, LocalActionPlanner
 from backend.app.services.completion import CompletionService
 from backend.app.services.cost_calculator import CostCalculator
 from backend.app.services.event_hub import SessionEventHub
@@ -49,6 +50,11 @@ class AppContainer:
             if self.settings.browserbase_configured
             else UnavailableAdapter("Browserbase")
         )
+        self.browser_adapter: Any = (
+            LocalBrowserAdapter(self.settings)
+            if self.settings.local_browser_enabled
+            else self.browserbase
+        )
         self.everos: Any = (
             EverOSAdapter(self.settings)
             if self.settings.everos_configured
@@ -60,7 +66,7 @@ class AppContainer:
             else UnavailableAdapter("Snowflake Cortex")
         )
         self.event_hub = SessionEventHub()
-        self.browser = BrowserController(adapter=self.browserbase, repository=self.repository)
+        self.browser = BrowserController(adapter=self.browser_adapter, repository=self.repository)
         self.browserbase_authorized = False
         self.guidance = GuidanceService(
             model_adapter=self.model,
@@ -105,11 +111,15 @@ class AppContainer:
         )
         self.autopilot = AutopilotService(
             browser=self.browser,
-            planner=CortexActionPlanner(
-                self.snowflake,
-                model=self.settings.guidance_model,
-                max_tokens=self.settings.guidance_model_max_tokens,
-                temperature=self.settings.guidance_model_temperature,
+            planner=(
+                LocalActionPlanner()
+                if self.settings.action_planner_provider == "local"
+                else CortexActionPlanner(
+                    self.snowflake,
+                    model=self.settings.guidance_model,
+                    max_tokens=self.settings.guidance_model_max_tokens,
+                    temperature=self.settings.guidance_model_temperature,
+                )
             ),
             event_hub=self.event_hub,
             repository=self.repository,
@@ -134,10 +144,23 @@ class AppContainer:
         """Hold a reference to a fire-and-forget task so it is not garbage collected."""
 
         self._background.add(task)
-        task.add_done_callback(self._background.discard)
+
+        def finished(done: asyncio.Task[Any]) -> None:
+            self._background.discard(done)
+            if done.cancelled():
+                return
+            try:
+                done.exception()
+            except Exception:
+                pass
+
+        task.add_done_callback(finished)
 
     async def start(self) -> None:
-        if self.settings.browserbase_configured:
+        if (
+            self.settings.browser_execution_provider == "browserbase"
+            and self.settings.browserbase_configured
+        ):
             await self.browserbase.reconcile_orphans()
             self.browserbase_authorized = True
         try:
@@ -175,6 +198,11 @@ class AppContainer:
     async def close(self) -> None:
         await self.proactive.stop()
         await self.browser.stop_all()
+        pending = tuple(self._background)
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
         if self.telemetry is not None:
             await self.telemetry.stop()
         await self.snowflake.close()

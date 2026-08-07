@@ -22,8 +22,10 @@ from fastapi import (
     UploadFile,
     status,
 )
+from fastapi.responses import HTMLResponse
 from sse_starlette.sse import EventSourceResponse
 
+from backend.app.browser.controller import ProviderBlockedSite
 from backend.app.config import RuntimeMode as ConfigRuntimeMode
 from backend.app.contracts.models import (
     AgentConfirmRequest,
@@ -158,9 +160,45 @@ async def _probe_readiness(app: AppContainer) -> ReadinessResponse:
         authorized=app.browserbase_authorized,
         last_checked_at=datetime.now(UTC),
         detail=(
-            "A WebAccessible-owned managed browser session is attached."
-            if browser_active
+            "A WebAccessible-owned Browserbase session is attached."
+            if browser_active and app.browserbase_authorized
             else "Browserbase session listing was authorized during startup reconciliation."
+            if app.browserbase_authorized
+            else "Browserbase is configured but is not the selected development browser."
+            if settings.browserbase_configured
+            else "Browserbase is not configured."
+        ),
+    )
+    local_browser = ProviderReadiness(
+        state=(
+            ProviderState.AUTHORIZED
+            if settings.local_browser_enabled
+            else ProviderState.UNCONFIGURED
+        ),
+        configured=settings.local_browser_enabled,
+        reachable=settings.local_browser_enabled,
+        authorized=settings.local_browser_enabled,
+        last_checked_at=datetime.now(UTC),
+        detail=(
+            "Local Playwright Chromium is the development execution path."
+            if settings.local_browser_enabled
+            else "Local browser execution is disabled."
+        ),
+    )
+    local_planner = ProviderReadiness(
+        state=(
+            ProviderState.AUTHORIZED
+            if settings.action_planner_provider == "local"
+            else ProviderState.UNCONFIGURED
+        ),
+        configured=settings.action_planner_provider == "local",
+        reachable=settings.action_planner_provider == "local",
+        authorized=settings.action_planner_provider == "local",
+        last_checked_at=datetime.now(UTC),
+        detail=(
+            "Deterministic local action planning is selected."
+            if settings.action_planner_provider == "local"
+            else "Local action planning is disabled."
         ),
     )
 
@@ -195,13 +233,20 @@ async def _probe_readiness(app: AppContainer) -> ReadinessResponse:
     )
     capabilities = {
         "browserbase": browserbase,
+        "local_browser": local_browser,
+        "local_planner": local_planner,
         "everos": everos,
         "snowflake": snowflake,
         "guidance_model": model,
     }
     return ReadinessResponse(
         mode=RuntimeMode(settings.app_env.value),
-        ready=everos.authorized and snowflake.authorized and app.browserbase_authorized,
+        ready=(
+            local_browser.authorized and local_planner.authorized
+            if settings.app_env == ConfigRuntimeMode.DEVELOPMENT
+            and settings.local_browser_enabled
+            else everos.authorized and snowflake.authorized and app.browserbase_authorized
+        ),
         fixture_mode=settings.app_env == ConfigRuntimeMode.TEST,
         capabilities=capabilities,
     )
@@ -312,6 +357,75 @@ async def live_view(
         raise HTTPException(status_code=409, detail="Browser session is not attached") from error
     response.headers["Cache-Control"] = "no-store"
     return {"live_view_url": url}
+
+
+@router.get("/v1/local-browser/{provider_session_id}/view", response_class=HTMLResponse)
+async def local_browser_view(
+    provider_session_id: str,
+    app: Annotated[AppContainer, Depends(container)],
+) -> HTMLResponse:
+    if not app.settings.local_browser_enabled or not provider_session_id.startswith("local-"):
+        raise HTTPException(status_code=404, detail="Local browser view not found")
+    screenshot_url = f"/v1/local-browser/{provider_session_id}/screenshot"
+    html = f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Local browser view</title>
+  <style>
+    html, body {{ height: 100%; margin: 0; background: #edf1ee; }}
+    body {{ display: grid; place-items: center; overflow: hidden; }}
+    img {{ width: 100%; height: 100%; object-fit: contain; }}
+  </style>
+</head>
+<body>
+  <img id="frame" alt="Current local browser page">
+  <script>
+    const frame = document.getElementById("frame");
+    let objectUrl;
+    async function refresh() {{
+      try {{
+        const response = await fetch({json.dumps(screenshot_url)}, {{ cache: "no-store" }});
+        if (!response.ok) return;
+        const nextUrl = URL.createObjectURL(await response.blob());
+        const previousUrl = objectUrl;
+        objectUrl = nextUrl;
+        frame.src = nextUrl;
+        if (previousUrl) URL.revokeObjectURL(previousUrl);
+      }} catch {{}}
+    }}
+    refresh();
+    setInterval(refresh, 700);
+  </script>
+</body>
+</html>"""
+    return HTMLResponse(
+        html,
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Security-Policy": (
+                "default-src 'self'; img-src 'self' blob:; "
+                "script-src 'unsafe-inline'; style-src 'unsafe-inline'"
+            ),
+        },
+    )
+
+
+@router.get("/v1/local-browser/{provider_session_id}/screenshot")
+async def local_browser_screenshot(
+    provider_session_id: str,
+    app: Annotated[AppContainer, Depends(container)],
+) -> Response:
+    if not app.settings.local_browser_enabled or not provider_session_id.startswith("local-"):
+        raise HTTPException(status_code=404, detail="Local browser view not found")
+    try:
+        content = await app.browser.screenshot(provider_session_id)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="Local browser session not found") from error
+    except Exception as error:
+        raise HTTPException(status_code=503, detail="Local browser frame is not ready") from error
+    return Response(content=content, media_type="image/png", headers={"Cache-Control": "no-store"})
 
 
 @router.post("/v1/sessions/{session_id}/browser:stop")
@@ -481,6 +595,14 @@ async def start_agent_run(
     )
     try:
         await app.orchestrator.attach_browser(session.id, start_url)
+    except ProviderBlockedSite as error:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "That site cannot be opened in the managed browser, so nothing was started. "
+                "Try one of the ready tasks or a different address."
+            ),
+        ) from error
     except RuntimeError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
     return await app.autopilot.start(

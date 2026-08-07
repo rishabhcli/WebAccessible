@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+from backend.app.browser.controller import is_provider_block
 from backend.app.contracts.models import (
     AgentActionKind,
     AgentPlan,
@@ -17,8 +18,14 @@ from backend.app.contracts.models import (
     SafetyClassification,
     SensitivityFlag,
 )
-from backend.app.domain.demos import DEMO_TASKS, DEMO_TASKS_BY_ID, is_allowlisted, origin_of
-from backend.app.services.autopilot import AutopilotService
+from backend.app.domain.demos import (
+    DEMO_ORIGINS,
+    DEMO_TASKS,
+    DEMO_TASKS_BY_ID,
+    is_allowlisted,
+    origin_of,
+)
+from backend.app.services.autopilot import AutopilotService, LocalActionPlanner
 from backend.app.services.event_hub import SessionEventHub
 
 
@@ -31,9 +38,10 @@ class _Outcome:
 
 @dataclass(frozen=True)
 class _PageState:
-    origin: str = "https://www.greatclips.com"
-    redacted_path: str = "/salons"
-    title: str | None = "Great Clips Online Check-In"
+    origin: str = "https://booksy.com"
+    redacted_path: str = "/en-us/s"
+    title: str | None = "Find services, compare prices & reviews"
+    blocked: bool = False
 
 
 def _candidate(
@@ -41,17 +49,21 @@ def _candidate(
     *,
     flags: list[SensitivityFlag] | None = None,
     name: str = "Continue",
+    href_origin: str | None = None,
+    tag_name: str = "button",
+    role: str = "button",
 ) -> ElementCandidate:
     return ElementCandidate(
         candidate_id=candidate_id,
-        role="button",
+        role=role,
         accessible_name=name,
-        tag_name="button",
+        tag_name=tag_name,
         visible=True,
         enabled=True,
         focusable=True,
         bounding_rect=BoundingRect(x=0, y=0, width=100, height=40),
         sensitivity_flags=flags or [],
+        href_origin=href_origin,
     )
 
 
@@ -113,7 +125,7 @@ class AutopilotTests(unittest.TestCase):
                 user_id="margaret",
                 task_name="Book a haircut",
                 prompt="Book a haircut at the closest salon",
-                start_url="https://www.greatclips.com/salons/online-check-in",
+                start_url="https://booksy.com/en-us/s/haircut",
             )
             run = service.get(session_id)
             assert run is not None and run.task is not None
@@ -276,13 +288,42 @@ class AutopilotTests(unittest.TestCase):
         assert view.pending_confirmation is not None
         self.assertIn("leaves the site we started on", view.pending_confirmation.message)
 
+    def test_clicking_a_cross_origin_link_stops_before_the_click(self) -> None:
+        browser = _Browser(
+            [
+                _candidate(
+                    "outside",
+                    name="Continue elsewhere",
+                    href_origin="https://unknown-prize-site.example",
+                    role="link",
+                    tag_name="a",
+                )
+            ]
+        )
+        planner = _Planner(
+            [
+                AgentPlan(
+                    action=AgentActionKind.CLICK,
+                    candidate_id="outside",
+                    narration="Following the link",
+                    confidence=0.9,
+                )
+            ]
+        )
+        service = self._service(browser, planner)
+
+        view = self._run(service, uuid4())
+
+        self.assertEqual(view.state, AgentRunState.NEEDS_CONFIRMATION)
+        self.assertEqual(browser.actions, [])
+
     def test_navigating_inside_the_starting_site_proceeds(self) -> None:
         browser = _Browser([_candidate("link")])
         planner = _Planner(
             [
                 AgentPlan(
                     action=AgentActionKind.NAVIGATE,
-                    url="https://www.greatclips.com/salons/ca",
+                    url="https://booksy.com/en-us/s/haircut/queens",
                     narration="Opening the salon list",
                     confidence=0.9,
                 ),
@@ -382,7 +423,7 @@ class AutopilotTests(unittest.TestCase):
                 user_id="margaret",
                 task_name="Pay",
                 prompt="pay it",
-                start_url="https://www.greatclips.com/",
+                start_url="https://booksy.com/",
             )
             run = service.get(session_id)
             assert run is not None and run.task is not None
@@ -412,7 +453,7 @@ class AutopilotTests(unittest.TestCase):
                 user_id="margaret",
                 task_name="Book a haircut",
                 prompt="book it",
-                start_url="https://www.greatclips.com/",
+                start_url="https://booksy.com/",
             )
             await asyncio.sleep(0)
             return await service.stop(session_id)
@@ -421,6 +462,132 @@ class AutopilotTests(unittest.TestCase):
 
         self.assertEqual(view.state, AgentRunState.STOPPED)
         self.assertIn("Nothing further was changed", view.summary or "")
+
+
+class LocalActionPlannerTests(unittest.TestCase):
+    def test_a_clear_continue_link_is_selected_without_a_model(self) -> None:
+        planner = LocalActionPlanner()
+        candidate = _candidate("continue", name="Continue to finish", role="link", tag_name="a")
+
+        plan = asyncio.run(
+            planner.plan(
+                prompt="Complete the local navigation check",
+                candidates=[candidate],
+                history=[],
+                page_title="Local navigation",
+                origin="http://127.0.0.1:8765",
+            )
+        )
+
+        assert plan is not None
+        self.assertEqual(plan.action, AgentActionKind.CLICK)
+        self.assertEqual(plan.candidate_id, "continue")
+
+    def test_a_completion_title_finishes_without_another_action(self) -> None:
+        plan = asyncio.run(
+            LocalActionPlanner().plan(
+                prompt="Complete the local navigation check",
+                candidates=[],
+                history=["1. Choosing Continue to finish."],
+                page_title="Task complete",
+                origin="http://127.0.0.1:8765",
+            )
+        )
+
+        assert plan is not None
+        self.assertTrue(plan.task_complete)
+        self.assertEqual(plan.action, AgentActionKind.DONE)
+
+    def test_a_generic_submit_button_stops_for_a_decision(self) -> None:
+        plan = asyncio.run(
+            LocalActionPlanner().plan(
+                prompt="Send the form",
+                candidates=[_candidate("submit", name="Submit form")],
+                history=[],
+                page_title="Details",
+                origin="http://127.0.0.1:8765",
+            )
+        )
+
+        assert plan is not None
+        self.assertEqual(plan.action, AgentActionKind.ASK)
+
+
+class ProviderBlockTests(unittest.TestCase):
+    """The provider's own refusal page must never be mistaken for the target site."""
+
+    def test_the_refusal_interstitial_is_recognized(self) -> None:
+        self.assertTrue(
+            is_provider_block(
+                "https://www.browserbase.com/navigation-blocked", "Navigation blocked"
+            )
+        )
+        self.assertTrue(is_provider_block("https://browserbase.com/navigation-blocked"))
+
+    def test_the_title_alone_is_enough_to_recognize_it(self) -> None:
+        self.assertTrue(
+            is_provider_block("https://example.test/x", "Navigation Blocked | Browserbase")
+        )
+
+    def test_an_ordinary_page_is_not_treated_as_blocked(self) -> None:
+        self.assertFalse(is_provider_block("https://booksy.com/en-us/s/haircut", "Book a haircut"))
+        self.assertFalse(
+            is_provider_block("https://www.dmv.ca.gov/portal/appointments/", "Appointments")
+        )
+
+    def test_the_providers_own_marketing_pages_are_not_flagged(self) -> None:
+        # Only the refusal path counts; browserbase.com/pricing is simply a page.
+        self.assertFalse(is_provider_block("https://www.browserbase.com/pricing", "Pricing"))
+
+    def test_a_blocked_page_stops_the_run_instead_of_being_worked_on(self) -> None:
+        @dataclass(frozen=True)
+        class _Blocked:
+            origin: str = "https://www.browserbase.com"
+            redacted_path: str = "/navigation-blocked"
+            title: str | None = "Navigation blocked | Browserbase"
+            blocked: bool = True
+
+        class _BlockedBrowser(_Browser):
+            async def page_state(self, _session_id: Any) -> _Blocked:
+                return _Blocked()
+
+        browser = _BlockedBrowser([_candidate("bb-pricing", name="Pricing")])
+        planner = _Planner(
+            [
+                AgentPlan(
+                    action=AgentActionKind.CLICK,
+                    candidate_id="bb-pricing",
+                    narration="Opening pricing",
+                )
+            ]
+        )
+        service = AutopilotService(
+            browser=browser,
+            planner=planner,
+            event_hub=SessionEventHub(),
+            repository=_Repository(),
+        )
+        session_id = uuid4()
+
+        async def scenario() -> Any:
+            await service.start(
+                session_id=session_id,
+                user_id="margaret",
+                task_name="Book a haircut",
+                prompt="book a haircut",
+                start_url="https://booksy.com/en-us/s/haircut",
+            )
+            run = service.get(session_id)
+            assert run is not None and run.task is not None
+            await run.task
+            return service.view(session_id)
+
+        view = asyncio.run(scenario())
+
+        self.assertEqual(view.state, AgentRunState.FAILED)
+        self.assertEqual(browser.actions, [], "no action may be taken on the refusal page")
+        self.assertEqual(planner.calls, 0, "the planner must never see the refusal page")
+        self.assertIn("cannot be opened", view.summary or "")
 
 
 class DemoCatalogueTests(unittest.TestCase):
@@ -440,6 +607,16 @@ class DemoCatalogueTests(unittest.TestCase):
                 self.assertTrue(task.start_url.startswith("https://"))
                 self.assertTrue(is_allowlisted(task.start_url))
                 self.assertNotIn("w3.org", task.start_url)
+
+    def test_no_demo_points_at_a_domain_the_provider_refuses(self) -> None:
+        # greatclips.com is refused by the provider's navigation policy; offering it
+        # would send the run straight to the refusal interstitial.
+        refused = ("greatclips.com", "browserbase.com")
+        for task in DEMO_TASKS:
+            with self.subTest(task=task.id):
+                for host in refused:
+                    self.assertNotIn(host, task.start_url)
+        self.assertFalse(any(host in origin for origin in DEMO_ORIGINS for host in refused))
 
     def test_every_demo_carries_a_prompt_the_agent_can_act_on(self) -> None:
         for task in DEMO_TASKS:

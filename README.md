@@ -42,7 +42,7 @@ Browserbase          EverOS memory       Snowflake + Cortex
 Session + CDP        Case/Skill/Episode  telemetry/cost/guidance
       |
       v
-Interactive Live View controlled by the participant
+Interactive Live View watched by the participant
 
 Snowflake product tables and evidence views
                 |
@@ -50,11 +50,12 @@ Snowflake product tables and evidence views
 Streamlit in Snowflake caregiver evidence app
 ```
 
-Local development runs the UI and API processes locally. Browser execution still occurs in a
-live Browserbase managed session; guidance uses live Snowflake Cortex; durable routine and
-completion memory uses live EverOS; telemetry and cost evidence sync to live Snowflake. The
-SQLite file is only short-lived operational state and an outbox, not the sponsor evidence or
-memory layer.
+Local development defaults to installed Playwright Chromium, a deterministic action planner,
+and an in-dashboard screenshot Live View. That path needs no cloud provider to start, navigate,
+or narrate a supported local task. Browserbase and Snowflake Cortex remain mandatory in demo
+and production; EverOS and Snowflake remain the durable memory and evidence providers. The
+SQLite file is only local operational state and an outbox, not sponsor evidence or durable
+memory.
 
 ## Implemented Capabilities
 
@@ -71,8 +72,8 @@ memory layer.
 - Automatic passwordless guest entry with large text and voice guidance defaults.
 - Three ready errands — DMV virtual queue, Amazon Whole Foods cart, and a salon
   appointment — plus a free-form prompt for anything else.
-- A browser-shaped dashboard: familiar tab and address chrome around the live Browserbase
-  page, with the narrated steps the agent took beside it.
+- A browser-shaped dashboard: familiar tab and address chrome around either the local
+  development view or Browserbase Live View, with narrated actions beside it.
 - Conversational recall ("when's the DMV appointment you booked?") answered from EverOS
   episode memory and the local activity ledger, phrased by Cortex, with a dated fallback
   when Cortex is unavailable.
@@ -91,8 +92,8 @@ memory layer.
 **Backend and cloud data**
 
 - Signed participant/caregiver sessions and scoped API access.
-- Browserbase create, Live View, server-side CDP attach, sanitized observation, highlight,
-  deterministic verification, and explicit termination.
+- A development-only local Chromium adapter plus Browserbase create, Live View, server-side
+  CDP attach, sanitized observation, highlight, deterministic verification, and termination.
 - Rules-based stuck detection, bounded Snowflake Cortex cold/repair guidance, verified route
   recording, selector-first replay, and single-step repair.
 - EverOS profile, routine search/read, teach `add`/`flush`, skill retrieval, and episode lookup.
@@ -115,7 +116,7 @@ backend/app/
   browser/             CDP observer, sanitizer, highlighter, resolver, verifier
   contracts/           Pydantic runtime contracts
   domain/              safety, state transitions, and skill rules
-  integrations/        Browserbase, EverOS, Snowflake, and Cortex adapters
+  integrations/        Local browser, Browserbase, EverOS, Snowflake, and Cortex adapters
   persistence/         operational SQLite ledger and outbox
   services/            orchestration, guidance, replay, repair, telemetry, cost
 web/src/
@@ -145,9 +146,9 @@ also requires the `snow` CLI; Fly deployment requires `flyctl`.
    make setup
    ```
 
-2. Populate `.env` with live Browserbase, EverOS, and Snowflake service credentials plus a
-   strong `SESSION_SIGNING_SECRET`. Keep `APP_ENV=development`. No local provider substitute is
-   started by this repository.
+2. Keep `APP_ENV=development`, `BROWSER_EXECUTION_PROVIDER=local`, and
+   `ACTION_PLANNER_PROVIDER=local` for a provider-independent local run. Provider credentials
+   are optional in this mode. Add them only when testing memory, telemetry, or cloud readiness.
 
 3. Run the backend:
 
@@ -163,6 +164,15 @@ also requires the `snow` CLI; Fly deployment requires `flyctl`.
 
 5. Open `http://localhost:5173`. FastAPI documentation is at
    `http://localhost:8000/docs`.
+
+Local execution uses the same sanitized snapshots, selector-bound actions, safety pauses, and
+CDP controller as Browserbase. The dashboard refreshes a read-only local browser image while
+the agent navigates. To exercise the production providers from a local API process, set:
+
+```bash
+BROWSER_EXECUTION_PROVIDER=browserbase
+ACTION_PLANNER_PROVIDER=snowflake_cortex
+```
 
 For a production-shaped local process that serves the built UI and API from one origin:
 

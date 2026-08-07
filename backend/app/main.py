@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,7 +11,22 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.app.api import router
+from backend.app.config import RuntimeMode, Settings, get_settings
 from backend.app.dependencies import AppContainer
+
+
+def cors_origins(settings: Settings) -> list[str]:
+    configured = str(settings.app_public_url).rstrip("/")
+    origins = [configured]
+    if settings.app_env not in {RuntimeMode.DEVELOPMENT, RuntimeMode.TEST}:
+        return origins
+    parsed = urlsplit(configured)
+    if parsed.hostname not in {"localhost", "127.0.0.1"}:
+        return origins
+    alternate_host = "127.0.0.1" if parsed.hostname == "localhost" else "localhost"
+    port = f":{parsed.port}" if parsed.port is not None else ""
+    origins.append(f"{parsed.scheme}://{alternate_host}{port}")
+    return origins
 
 
 @asynccontextmanager
@@ -47,10 +63,10 @@ async def forbidden(_request: Request, error: PermissionError) -> JSONResponse:
 app.include_router(router)
 
 
-container_settings = __import__("backend.app.config", fromlist=["get_settings"]).get_settings()
+container_settings = get_settings()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[str(container_settings.app_public_url).rstrip("/")],
+    allow_origins=cors_origins(container_settings),
     allow_credentials=False,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "Last-Event-ID"],

@@ -14,7 +14,7 @@ from typing import Any
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
-from backend.app.browser.controller import BrowserController
+from backend.app.browser.controller import BrowserController, ProviderBlockedSite
 from backend.app.contracts.models import (
     BackendCommand,
     CommandType,
@@ -202,6 +202,17 @@ class SessionOrchestrator:
                 view = await self.browser.start(
                     web_session_id=session.id, user_id=session.user_id, start_url=start_url
                 )
+            except ProviderBlockedSite:
+                updated = self._transition(
+                    session,
+                    SessionState.PROVIDER_UNAVAILABLE,
+                    browser_status="unavailable",
+                    terminal_message=(
+                        "This site cannot be opened in the browser I use, so nothing started."
+                    ),
+                )
+                await self._publish(updated)
+                raise
             except Exception as error:
                 # The sanitized message goes to the participant; the cause has to reach the
                 # log or a failure to start is undiagnosable from the outside.

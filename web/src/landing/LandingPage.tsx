@@ -32,7 +32,7 @@ export function LandingPage({ onCaregiver, onStart }: LandingPageProps) {
         <div className="welcome-hero__copy">
           <span className="welcome-kicker"><Sparkles aria-hidden="true" size={19} /> Calm help for confusing websites</span>
           <h1 id="welcome-title">The web, one clear step at a time.</h1>
-          <p>WebAccessible shows you what to do next, then waits while you make the click.</p>
+          <p>WebAccessible handles each step and shows you what it did in plain language.</p>
           <div className="welcome-actions">
             <button className="welcome-button welcome-button--primary" onClick={onStart} type="button">
               <UserRound aria-hidden="true" size={23} />
@@ -64,10 +64,10 @@ export function LandingPage({ onCaregiver, onStart }: LandingPageProps) {
               <span>Account details</span>
             </div>
             <aside className="welcome-preview__guide">
-              <span>Next step</span>
+              <span>Just completed</span>
               <MousePointer2 aria-hidden="true" size={36} />
-              <strong>Choose “Billing &amp; payments.”</strong>
-              <small>You make the click.</small>
+              <strong>Opened “Billing &amp; payments.”</strong>
+              <small>You stay in control.</small>
             </aside>
           </div>
         </div>
@@ -81,8 +81,8 @@ export function LandingPage({ onCaregiver, onStart }: LandingPageProps) {
         <div className="welcome-how__grid">
           <article>
             <span className="welcome-number">1</span>
-            <h3>One next step</h3>
-            <p>No long checklist. Just one large, plain-language instruction.</p>
+            <h3>One step at a time</h3>
+            <p>No long checklist. Each action is reported in plain language.</p>
           </article>
           <article>
             <Volume2 aria-hidden="true" size={29} />
@@ -92,7 +92,7 @@ export function LandingPage({ onCaregiver, onStart }: LandingPageProps) {
           <article>
             <ShieldCheck aria-hidden="true" size={29} />
             <h3>Safe at every step</h3>
-            <p>Nothing important is submitted until you choose the real button.</p>
+            <p>Money, identity, and deletion pause so you can decide.</p>
           </article>
         </div>
       </section>
@@ -118,7 +118,7 @@ export function LandingPage({ onCaregiver, onStart }: LandingPageProps) {
 
       <footer className="welcome-footer">
         <span><MousePointer2 aria-hidden="true" size={19} /> WebAccessible</span>
-        <p>Dignity first. The person browsing makes every click.</p>
+        <p>Dignity first. You make the decisions that matter.</p>
       </footer>
     </main>
   );

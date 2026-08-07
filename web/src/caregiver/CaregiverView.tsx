@@ -365,7 +365,7 @@ const agentServices = [
     id: "browserbase",
     name: "Live browser",
     provider: "Browserbase",
-    description: "Managed browser and participant-controlled Live View",
+    description: "Managed browser execution with a participant-visible Live View",
     icon: Cloud,
   },
   {

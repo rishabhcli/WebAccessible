@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -44,6 +45,11 @@ from backend.app.domain.demos import DEMO_ORIGINS, origin_of
 
 logger = logging.getLogger(__name__)
 
+_BLOCKED_SUMMARY = (
+    "This site cannot be opened in the browser I use, so I stopped. "
+    "Nothing was changed."
+)
+
 # Actions that change money or disclose identity are the only ones that stop the run.
 _STOPPING_CLASSIFICATIONS = frozenset(
     {
@@ -55,6 +61,41 @@ _STOPPING_CLASSIFICATIONS = frozenset(
 _STOPPING_FLAGS = frozenset(
     {SensitivityFlag.PASSWORD, SensitivityFlag.PAYMENT, SensitivityFlag.BANK}
 )
+_COMPLETE_MARKERS = (
+    "task complete",
+    "success",
+    "all done",
+    "finished",
+)
+_ACTION_MARKERS = (
+    "continue",
+    "next",
+    "start",
+    "begin",
+    "search",
+    "find",
+    "book",
+    "schedule",
+    "add",
+    "join",
+    "check in",
+    "finish",
+    "complete",
+    "submit",
+)
+_LOW_VALUE_MARKERS = (
+    "sign in",
+    "log in",
+    "cookie",
+    "privacy",
+    "terms",
+    "menu",
+    "account",
+    "help",
+)
+_TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
+_EMAIL_PATTERN = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
+_ZIP_PATTERN = re.compile(r"\b\d{5}(?:-\d{4})?\b")
 
 
 @dataclass
@@ -75,6 +116,8 @@ class AgentRun:
     redacted_path: str | None = None
     pending_confirmation: SafetyPresentation | None = None
     summary: str | None = None
+    # The managed browser refused the destination and is showing its own interstitial.
+    blocked: bool = False
     task: asyncio.Task[None] | None = None
 
     def view(self) -> AgentRunView:
@@ -189,7 +232,13 @@ class AutopilotService:
     async def _drive(self, run: AgentRun) -> None:
         try:
             await self._refresh_page(run)
+            if run.blocked:
+                await self._finish(run, AgentRunState.FAILED, _BLOCKED_SUMMARY)
+                return
             while run.state is AgentRunState.RUNNING and len(run.steps) < self.max_steps:
+                if run.blocked:
+                    await self._finish(run, AgentRunState.FAILED, _BLOCKED_SUMMARY)
+                    return
                 candidates = await self.browser.snapshot(run.session_id)
                 plan = await self._plan(run, candidates)
                 if plan is None:
@@ -292,11 +341,12 @@ class AutopilotService:
                 ),
                 irreversible_action=plan.narration,
             )
-        if (
-            plan.action is AgentActionKind.NAVIGATE
-            and plan.url
-            and origin_of(plan.url) not in run.allowed_origins
-        ):
+        destination_origin = None
+        if plan.action is AgentActionKind.NAVIGATE and plan.url:
+            destination_origin = origin_of(plan.url)
+        elif plan.action is AgentActionKind.CLICK and target is not None:
+            destination_origin = target.href_origin
+        if destination_origin and destination_origin not in run.allowed_origins:
             return SafetyPresentation(
                 classification=SafetyClassification.UNKNOWN,
                 message=(
@@ -343,6 +393,7 @@ class AutopilotService:
         run.page_title = state.title
         run.origin = state.origin
         run.redacted_path = state.redacted_path
+        run.blocked = bool(getattr(state, "blocked", False))
 
     async def _pause(self, run: AgentRun, presentation: SafetyPresentation) -> None:
         run.state = AgentRunState.NEEDS_CONFIRMATION
@@ -395,6 +446,145 @@ def _risk_phrase(classification: SafetyClassification) -> str:
         SafetyClassification.IDENTITY: "share personal identity details",
         SafetyClassification.DELETION: "delete something",
     }.get(classification, "do something I should not decide alone")
+
+
+class LocalActionPlanner:
+    """Choose a narrow, deterministic next action without a network model call."""
+
+    async def plan(
+        self,
+        *,
+        prompt: str,
+        candidates: Sequence[ElementCandidate],
+        history: Sequence[str],
+        page_title: str | None,
+        origin: str | None,
+    ) -> AgentPlan | None:
+        del origin
+        title = _normalized(page_title)
+        if any(marker in title for marker in _COMPLETE_MARKERS):
+            return AgentPlan(
+                action=AgentActionKind.DONE,
+                narration="The task is complete.",
+                confidence=1.0,
+                task_complete=True,
+            )
+
+        available = [item for item in candidates if item.visible and item.enabled]
+        for candidate in available:
+            value = _explicit_field_value(candidate, prompt)
+            if value is None:
+                continue
+            label = _candidate_label(candidate)
+            return AgentPlan(
+                action=AgentActionKind.FILL,
+                candidate_id=candidate.candidate_id,
+                value=value,
+                narration=f"Entering {label or 'the requested information'}.",
+                safety_classification=_candidate_safety(candidate, label),
+                confidence=0.95,
+            )
+
+        prompt_tokens = _significant_tokens(prompt)
+        history_text = _normalized(" ".join(history))
+        ranked: list[tuple[int, int, ElementCandidate, str]] = []
+        for index, candidate in enumerate(available):
+            if set(candidate.sensitivity_flags) & _STOPPING_FLAGS:
+                continue
+            role_is_action = candidate.role in {"button", "link", "tab", "menuitem"}
+            tag_is_action = candidate.tag_name in {"a", "button", "summary"}
+            if not role_is_action and not tag_is_action:
+                continue
+            label = _candidate_label(candidate)
+            if not label:
+                continue
+            normalized = _normalized(label)
+            score = sum(6 for marker in _ACTION_MARKERS if marker in normalized)
+            score += 2 * len(prompt_tokens & _significant_tokens(label))
+            score -= sum(5 for marker in _LOW_VALUE_MARKERS if marker in normalized)
+            if normalized in history_text:
+                score -= 2
+            ranked.append((score, -index, candidate, label))
+
+        if not ranked:
+            return None
+        score, _position, candidate, label = max(ranked, key=lambda item: (item[0], item[1]))
+        if score < 2:
+            return None
+        if "submit" in _normalized(label):
+            return AgentPlan(
+                action=AgentActionKind.ASK,
+                narration="This button submits information, so I stopped for your decision.",
+                safety_classification=SafetyClassification.UNKNOWN,
+                confidence=0.95,
+            )
+        return AgentPlan(
+            action=AgentActionKind.CLICK,
+            candidate_id=candidate.candidate_id,
+            narration=f"Choosing {label}.",
+            safety_classification=_candidate_safety(candidate, label),
+            confidence=min(0.98, 0.65 + score / 40),
+        )
+
+
+def _candidate_label(candidate: ElementCandidate) -> str:
+    return (candidate.accessible_name or candidate.visible_text or "").strip()[:80]
+
+
+def _normalized(value: str | None) -> str:
+    return " ".join((value or "").casefold().split())
+
+
+def _significant_tokens(value: str) -> set[str]:
+    ignored = {"and", "for", "from", "into", "the", "this", "that", "with", "your"}
+    return {
+        token
+        for token in _TOKEN_PATTERN.findall(value.casefold())
+        if len(token) > 2 and token not in ignored
+    }
+
+
+def _explicit_field_value(candidate: ElementCandidate, prompt: str) -> str | None:
+    if candidate.tag_name not in {"input", "textarea"} or candidate.input_type in {
+        "button",
+        "checkbox",
+        "hidden",
+        "password",
+        "radio",
+        "reset",
+        "submit",
+    }:
+        return None
+    label = _normalized(_candidate_label(candidate))
+    if "email" in label:
+        match = _EMAIL_PATTERN.search(prompt)
+        return match.group(0) if match else None
+    if "zip" in label or "postal" in label:
+        match = _ZIP_PATTERN.search(prompt)
+        return match.group(0) if match else None
+    if "search" in label:
+        quoted = re.search(r"[\"']([^\"']{2,120})[\"']", prompt)
+        return quoted.group(1).strip() if quoted else None
+    return None
+
+
+def _candidate_safety(
+    candidate: ElementCandidate,
+    label: str,
+) -> SafetyClassification:
+    flags = set(candidate.sensitivity_flags)
+    normalized = _normalized(label)
+    if flags & {SensitivityFlag.PAYMENT, SensitivityFlag.BANK} or any(
+        marker in normalized for marker in ("pay", "purchase", "place order", "checkout")
+    ):
+        return SafetyClassification.MONEY
+    if SensitivityFlag.IDENTITY in flags or any(
+        marker in normalized for marker in ("passport", "social security", "driver license")
+    ):
+        return SafetyClassification.IDENTITY
+    if any(marker in normalized for marker in ("delete", "erase", "remove permanently")):
+        return SafetyClassification.DELETION
+    return SafetyClassification.SAFE
 
 
 class CortexActionPlanner:

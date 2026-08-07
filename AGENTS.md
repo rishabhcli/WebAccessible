@@ -13,6 +13,9 @@ Primary source of truth is:
 Current execution-provider addendum:
 
 - `docs/sponsors/BROWSERBASE.md` supersedes the spec's local MV3/localhost topology. Browserbase Browser Sessions, CDP, and interactive Live View are the only production/demo browser path; autonomous Browserbase Agent actions are prohibited.
+- Development may use the explicit local Playwright Chromium adapter and deterministic planner
+  for provider-independent browser QA. This mode is local evidence only and must never be
+  enabled or described as provider evidence in demo or production.
 
 Execution source:
 
