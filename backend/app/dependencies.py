@@ -116,8 +116,8 @@ class AppContainer:
                 if self.settings.action_planner_provider == "local"
                 else CortexActionPlanner(
                     self.snowflake,
-                    model=self.settings.guidance_model,
-                    max_tokens=self.settings.guidance_model_max_tokens,
+                    model=self.settings.action_planner_model,
+                    max_tokens=self.settings.action_planner_max_tokens,
                     temperature=self.settings.guidance_model_temperature,
                 )
             ),

@@ -8,6 +8,12 @@ primary_region = "sjc"
   APP_ENV = "production"
   OPERATIONAL_DATABASE_PATH = "/data/webaccessible.sqlite3"
   PORT = "8080"
+  # Both are required by the APP_ENV=production validator in backend/app/config.py, and
+  # both default to "local". Leaving them unset made Settings() raise at import, so uvicorn
+  # died before binding, the machine crash-looped to its restart cap, and the whole site
+  # answered nothing. They are configuration rather than credentials, so they belong here.
+  BROWSER_EXECUTION_PROVIDER = "browserbase"
+  ACTION_PLANNER_PROVIDER = "snowflake_cortex"
 
 [http_service]
   internal_port = 8080

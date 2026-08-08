@@ -11,7 +11,7 @@ There is no origin allowlist. A run goes wherever the task leads it.
 from __future__ import annotations
 
 from typing import Final
-from urllib.parse import urlsplit
+from urllib.parse import quote_plus, urlsplit
 
 from backend.app.contracts.models import DemoTask
 
@@ -29,22 +29,25 @@ DEMO_TASKS: Final[tuple[DemoTask, ...]] = (
         # at that legitimate destination avoids an inaccessible challenge rather than
         # attempting to defeat it.
         start_url="https://mt-cadmvoas.us.qmatic.cloud/branches",
+        # The office has to be one this Qmatic list actually offers. It named San
+        # Francisco before, which is not on it, so the run scrolled the branch list
+        # looking for a branch that was never there and then asked for help.
         prompt=(
-            "At the San Francisco DMV office, choose Office Visit and Driver Lic./ID Card, "
+            "At the Chico DMV office, choose Office Visit and Driver Lic./ID Card, "
             "then get in line for a senior driver's license renewal."
         ),
         category="government",
     ),
     DemoTask(
-        id="sprouts-groceries",
+        id="target-groceries",
         name="Add groceries to the cart",
         description=(
-            "Fills an Instacart cart from the Sprouts storefront with the usual weekly "
-            "staples, stopping before checkout."
+            "Fills a Target cart with the usual weekly grocery staples, stopping before "
+            "checkout."
         ),
-        start_url="https://www.instacart.com/store/sprouts/",
+        start_url="https://www.target.com/c/grocery/-/N-5xt1a",
         prompt=(
-            "Add milk, eggs, bananas, and bread to my Sprouts cart on Instacart. "
+            "Add milk, eggs, bananas, and bread to my Target cart. "
             "Stop before placing the order."
         ),
         category="shopping",
@@ -53,25 +56,38 @@ DEMO_TASKS: Final[tuple[DemoTask, ...]] = (
         id="haircut-appointment",
         name="Book a haircut",
         description=(
-            "Opens the neighbourhood barbershop's booking page and holds the next open slot."
+            "Opens the barbershop's booking page, picks the haircut, and holds the next "
+            "open slot."
         ),
-        # Booksy's own search resolves a location only through a Google-Places
-        # autocomplete whose suggestions are drawn client-side; nothing in the URL sets
-        # one, so a run that starts there types the city over and over and never gets a
-        # result list.  Starting on the shop's public booking page -- the same page that
-        # search would have led to -- puts the run straight onto services and times.
+        # This used to start at Booksy's search page, where the run stalled: Booksy
+        # resolves a location only through an autocomplete drawn client-side -- no URL
+        # sets one -- so the run typed "San Francisco, CA" on every remaining step and
+        # never got a result list.  Booksy's own shop pages are no better: their Book
+        # buttons do nothing under an automated browser.  Square Appointments hosts the
+        # whole errand -- services, times, and the hold -- as ordinary page controls, so
+        # the run can actually finish it.
         start_url=(
-            "https://booksy.com/en-us/162167_the-shop-barbershop_barber-shop_134715_san-francisco"
+            "https://squareup.com/appointments/book/2R6BZ1QJ91ECW/society-barbershop-san-jose-ca"
         ),
         prompt=(
-            "Book a haircut at The Shop Barbershop in San Francisco at the earliest "
-            "available time this week."
+            "Book a haircut at Society Barbershop at the earliest available time this "
+            "week. Stop before paying."
         ),
         category="appointment",
     ),
 )
 
 DEMO_TASKS_BY_ID: Final[dict[str, DemoTask]] = {task.id: task for task in DEMO_TASKS}
+
+
+def search_url_for(prompt: str) -> str:
+    """Where a run starts when nobody supplied an address: a search for the errand.
+
+    DuckDuckGo's HTML endpoint is used rather than a scripted results page because it
+    renders links as plain anchors, which is exactly what the run can read and follow.
+    """
+
+    return "https://html.duckduckgo.com/html/?q=" + quote_plus(prompt.strip()[:200])
 
 
 def origin_of(url: str) -> str:

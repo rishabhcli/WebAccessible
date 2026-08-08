@@ -140,13 +140,18 @@ class AutopilotTests(unittest.TestCase):
             **kwargs,
         )
 
-    def _run(self, service: AutopilotService, session_id: Any) -> Any:
+    def _run(
+        self,
+        service: AutopilotService,
+        session_id: Any,
+        prompt: str = "Book a haircut at the closest salon",
+    ) -> Any:
         async def scenario() -> Any:
             await service.start(
                 session_id=session_id,
                 user_id="margaret",
                 task_name="Book a haircut",
-                prompt="Book a haircut at the closest salon",
+                prompt=prompt,
                 start_url="https://booksy.com/en-us/s/haircut",
             )
             run = service.get(session_id)
@@ -365,6 +370,178 @@ class AutopilotTests(unittest.TestCase):
         self.assertEqual(view.state, AgentRunState.FAILED)
         self.assertEqual(len(view.steps), 4)
         self.assertIn("without finishing", view.summary or "")
+
+    def test_scrolling_one_page_cannot_swallow_the_whole_run(self) -> None:
+        # A live run on the California DMV queue spent 23 consecutive steps scrolling for a
+        # San Francisco office it never recognised. A scroll carries no candidate and no
+        # url, so nothing was recorded against the page, and the viewport moving does not
+        # change the page key either -- so the repeat guard never engaged.
+        browser = _Browser(
+            [
+                _candidate(
+                    "row",
+                    name="BISHOP 1115 West Line Street, BISHOP",
+                    role="listitem",
+                    tag_name="div",
+                )
+            ]
+        )
+
+        class _Scroller:
+            def __init__(self) -> None:
+                self.prompts: list[str] = []
+
+            async def plan(self, **kwargs: Any) -> AgentPlan:
+                self.prompts.append(str(kwargs.get("prompt")))
+                return AgentPlan(
+                    action=AgentActionKind.SCROLL,
+                    narration="Scrolling down to find the San Francisco DMV office.",
+                )
+
+        planner = _Scroller()
+        service = self._service(browser, planner)
+
+        view = self._run(service, uuid4(), prompt=DEMO_TASKS_BY_ID["dmv-get-in-line"].prompt)
+
+        scrolls = [
+            action for action in browser.actions if action["action"] is AgentActionKind.SCROLL
+        ]
+        self.assertLessEqual(len(scrolls), 4, "one page may not be scrolled indefinitely")
+        self.assertEqual(view.state, AgentRunState.FAILED)
+        self.assertLess(len(view.steps), 24, "the step budget must not be spent on scrolling")
+        self.assertTrue(
+            any("do not scroll" in prompt for prompt in planner.prompts),
+            "the planner has to be told it already scrolled this page",
+        )
+
+    def test_a_couple_of_scrolls_down_a_long_list_are_still_allowed(self) -> None:
+        # Bounding the loop must not ban scrolling: looking down a long list of offices is
+        # exactly what a scroll is for.
+        browser = _Browser([_candidate("c1")])
+        planner = _Planner(
+            [
+                AgentPlan(action=AgentActionKind.SCROLL, narration="Looking further down."),
+                AgentPlan(action=AgentActionKind.SCROLL, narration="Looking further down."),
+                AgentPlan(
+                    action=AgentActionKind.CLICK, candidate_id="c1", narration="Choosing Continue."
+                ),
+                AgentPlan(action=AgentActionKind.DONE, narration="Done.", task_complete=True),
+            ]
+        )
+        service = self._service(browser, planner)
+
+        view = self._run(service, uuid4())
+
+        self.assertEqual(view.state, AgentRunState.COMPLETED)
+        self.assertEqual(
+            [action["action"] for action in browser.actions],
+            [AgentActionKind.SCROLL, AgentActionKind.SCROLL, AgentActionKind.CLICK],
+        )
+
+    def test_the_office_the_task_named_is_chosen_over_a_different_one(self) -> None:
+        # A live DMV run joined the queue at BISHOP, then at CHULA VISTA, for a task that
+        # named a different office. One row of a list of field offices reads like any
+        # other to a planner, so the run has to check the pick against the place the task
+        # named.
+        browser = _Browser(
+            [
+                _candidate(
+                    "bishop",
+                    name="BISHOP 1115 West Line Street, BISHOP",
+                    role="link",
+                    tag_name="a",
+                ),
+                _candidate(
+                    "chula",
+                    name="CHULA VISTA 30 N. Glover Avenue, CHULA VISTA",
+                    role="link",
+                    tag_name="a",
+                ),
+                _candidate(
+                    "chico",
+                    name="CHICO 2382 Notre Dame Boulevard, CHICO",
+                    role="link",
+                    tag_name="a",
+                ),
+            ]
+        )
+        planner = _Planner(
+            [
+                AgentPlan(
+                    action=AgentActionKind.CLICK,
+                    candidate_id="bishop",
+                    narration="Choosing BISHOP 1115 West Line Street, BISHOP.",
+                ),
+                AgentPlan(action=AgentActionKind.DONE, narration="Done.", task_complete=True),
+            ]
+        )
+        service = self._service(browser, planner)
+
+        view = self._run(service, uuid4(), prompt=DEMO_TASKS_BY_ID["dmv-get-in-line"].prompt)
+
+        self.assertEqual([action["candidate_id"] for action in browser.actions], ["chico"])
+        self.assertIn("CHICO", view.steps[0].narration)
+        self.assertNotIn("BISHOP", view.steps[0].narration)
+
+    def test_the_control_that_moves_the_page_forward_is_not_second_guessed(self) -> None:
+        # The place check exists to stop the run taking a different row of the same list.
+        # It must never hijack the generic control that advances the page, which names no
+        # place by design.
+        browser = _Browser(
+            [
+                _candidate("next", name="Next", role="link", tag_name="a"),
+                _candidate(
+                    "chico",
+                    name="CHICO 2382 Notre Dame Boulevard, CHICO",
+                    role="link",
+                    tag_name="a",
+                ),
+            ]
+        )
+        planner = _Planner(
+            [
+                AgentPlan(
+                    action=AgentActionKind.CLICK,
+                    candidate_id="next",
+                    narration="Opening the next page of offices.",
+                ),
+                AgentPlan(action=AgentActionKind.DONE, narration="Done.", task_complete=True),
+            ]
+        )
+        service = self._service(browser, planner)
+
+        self._run(service, uuid4(), prompt=DEMO_TASKS_BY_ID["dmv-get-in-line"].prompt)
+
+        self.assertEqual([action["candidate_id"] for action in browser.actions], ["next"])
+
+    def test_a_redirected_choice_is_only_tried_once(self) -> None:
+        # The check trades one step for not queueing at the wrong office: when a task names
+        # several things -- a shop and a service -- it can prefer the longer name over the
+        # planner's pick. That has to cost a single step, not the run, so the row it
+        # redirected to counts as tried and the planner's own choice then goes through.
+        browser = _Browser(
+            [
+                _candidate("service", name="Haircut", role="link", tag_name="a"),
+                _candidate("shop", name="Society Barbershop San Jose", role="link", tag_name="a"),
+            ]
+        )
+        cut = AgentPlan(
+            action=AgentActionKind.CLICK, candidate_id="service", narration="Choosing a cut."
+        )
+        planner = _Planner(
+            [
+                cut,
+                cut,
+                AgentPlan(action=AgentActionKind.DONE, narration="Done.", task_complete=True),
+            ]
+        )
+        service = self._service(browser, planner)
+
+        self._run(service, uuid4(), prompt=DEMO_TASKS_BY_ID["haircut-appointment"].prompt)
+
+        self.assertEqual(
+            [action["candidate_id"] for action in browser.actions], ["shop", "service"]
+        )
 
     def test_an_unavailable_planner_fails_the_run_calmly(self) -> None:
         service = self._service(_Browser([_candidate("c1")]), _Planner([]))
@@ -722,7 +899,7 @@ class DemoCatalogueTests(unittest.TestCase):
     def test_the_three_offered_demos_are_the_promised_errands(self) -> None:
         self.assertEqual(
             [task.id for task in DEMO_TASKS],
-            ["dmv-get-in-line", "sprouts-groceries", "haircut-appointment"],
+            ["dmv-get-in-line", "target-groceries", "haircut-appointment"],
         )
         self.assertEqual(
             {task.category for task in DEMO_TASKS},

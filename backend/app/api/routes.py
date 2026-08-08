@@ -64,7 +64,7 @@ from backend.app.contracts.models import (
     TaskStartRequest,
 )
 from backend.app.dependencies import AppContainer
-from backend.app.domain.demos import DEMO_TASKS, DEMO_TASKS_BY_ID
+from backend.app.domain.demos import DEMO_TASKS, DEMO_TASKS_BY_ID, search_url_for
 from backend.app.integrations.everos import EverOSErrorCode, EverOSProviderError
 from backend.app.services.auth import AuthenticatedParticipant
 from backend.app.services.event_hub import user_topic
@@ -577,36 +577,56 @@ async def start_agent_run(
     demo = DEMO_TASKS_BY_ID.get(body.demo_id) if body.demo_id else None
     if body.demo_id and demo is None:
         raise HTTPException(status_code=404, detail="That demo is not available")
-    start_url = str(body.start_url) if body.start_url else (demo.start_url if demo else None)
-    if start_url is None:
-        raise HTTPException(
-            status_code=422,
-            detail="Choose one of the ready tasks, or give a web address to start from.",
-        )
+    # Nobody should have to know a web address to ask for something. Without one, the
+    # run starts from a search for what was asked and finds the site itself -- the same
+    # thing a person would do.
+    fallback_url = search_url_for(body.prompt)
+    if body.start_url:
+        start_url = str(body.start_url)
+    elif demo:
+        start_url = demo.start_url
+    else:
+        start_url = fallback_url
     task_name = demo.name if demo else body.prompt[:120]
-    session = app.orchestrator.create_session(
-        user_id=who.user_id,
-        participant_session_id=who.participant_session_id,
-        mode=SessionMode.COLD_TEACH,
-        task_name=task_name,
-        task_intent=body.prompt,
-        skill_id=None,
-        start_url=start_url,
-    )
+
+    async def attached(url: str) -> UUID:
+        session = app.orchestrator.create_session(
+            user_id=who.user_id,
+            participant_session_id=who.participant_session_id,
+            mode=SessionMode.COLD_TEACH,
+            task_name=task_name,
+            task_intent=body.prompt,
+            skill_id=None,
+            start_url=url,
+        )
+        await app.orchestrator.attach_browser(session.id, url)
+        return session.id
+
     try:
-        await app.orchestrator.attach_browser(session.id, start_url)
-    except ProviderBlockedSite as error:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "That site cannot be opened in the managed browser, so nothing was started. "
-                "Try one of the ready tasks or a different address."
-            ),
-        ) from error
-    except RuntimeError as error:
-        raise HTTPException(status_code=503, detail=str(error)) from error
+        session_id = await attached(start_url)
+    except (ProviderBlockedSite, RuntimeError) as error:
+        # The address given did not open. That is a reason to look the errand up, not a
+        # reason to hand the participant an error and nothing else.
+        if start_url == fallback_url:
+            detail = (
+                "I could not open a browser for that just now. Please try again in a "
+                "moment."
+                if isinstance(error, RuntimeError)
+                else "That site cannot be opened in the browser I use."
+            )
+            raise HTTPException(
+                status_code=503 if isinstance(error, RuntimeError) else 422, detail=detail
+            ) from error
+        try:
+            session_id = await attached(fallback_url)
+        except (ProviderBlockedSite, RuntimeError) as retry_error:
+            raise HTTPException(
+                status_code=503,
+                detail="I could not open a browser for that just now. Please try again.",
+            ) from retry_error
+        start_url = fallback_url
     return await app.autopilot.start(
-        session_id=session.id,
+        session_id=session_id,
         user_id=who.user_id,
         task_name=task_name,
         prompt=body.prompt,

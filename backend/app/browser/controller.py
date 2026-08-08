@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -26,6 +27,8 @@ from backend.app.contracts.models import (
     VerificationPredicate,
 )
 from backend.app.persistence.repository import OperationalRepository
+
+logger = logging.getLogger(__name__)
 
 EventSink = Callable[[EventEnvelope], Awaitable[None]]
 
@@ -100,6 +103,107 @@ _SUGGESTION_SELECTOR = (
 )
 
 
+_CONSENT_SCRIPT = r"""
+() => {
+  // A cookie banner is an overlay that swallows the first click on everything behind
+  // it. Accepting it is not a decision the run needs a person for -- it changes nothing
+  // and it is the only way the page underneath becomes clickable at all.
+  const wanted = /^(ok|accept|accept all|allow all|i agree|agree|got it|accept cookies)$/i;
+  const controls = document.querySelectorAll('button, a[role="button"], [role="button"]');
+  for (const control of controls) {
+    const label = (control.innerText || control.getAttribute('aria-label') || '')
+      .replace(/\s+/g, ' ').trim();
+    if (!wanted.test(label)) continue;
+    const rect = control.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) continue;
+    control.click();
+    return label;
+  }
+  return null;
+}
+"""
+
+
+_OVERLAY_SCRIPT = r"""
+() => {
+  // Sign-in nags, app-download prompts, and "get 20% off" panels sit over the page on
+  // every retail site. They are not decisions -- dismissing one commits nothing -- but
+  // while one is up the run either clicks into it by mistake or has its clicks swallowed.
+  // A live grocery run never got past Target's sign-in flyout.
+  //
+  // A dialog that asks for a real choice is left alone. Target opens one after every add
+  // to cart -- pickup, delivery, or shipping -- and closing that is not tidying up, it is
+  // abandoning the step the run just took.
+  const nagging = /sign in|sign up|create an? account|download the app|newsletter|subscribe|% off|notifications?|save more/i;
+  const deciding = /pickup|delivery|deliver|ship it|shipping|add to cart|choose|select a|continue|checkout|quantity/i;
+  const dismissive = /^(close|dismiss|no thanks|not now|maybe later|skip|x)$/i;
+  const closed = [];
+  for (const element of document.querySelectorAll('div, section, aside, dialog')) {
+    const style = getComputedStyle(element);
+    if (style.position !== 'fixed' && style.position !== 'absolute') continue;
+    if (style.visibility === 'hidden' || style.display === 'none') continue;
+    const layer = Number.parseInt(style.zIndex, 10);
+    const rect = element.getBoundingClientRect();
+    if (!(layer >= 10) && element.getAttribute('role') !== 'dialog') continue;
+    if (rect.width < 200 || rect.height < 80) continue;
+    const text = (element.innerText || '').replace(/\s+/g, ' ').trim();
+    if (!nagging.test(text) || deciding.test(text)) continue;
+    for (const control of element.querySelectorAll('button, a[role="button"], [role="button"]')) {
+      const label = (control.getAttribute('aria-label') || control.innerText || '')
+        .replace(/\s+/g, ' ').trim();
+      if (!dismissive.test(label)) continue;
+      const box = control.getBoundingClientRect();
+      if (box.width < 1 || box.height < 1) continue;
+      control.click();
+      closed.push(label);
+      break;
+    }
+  }
+  return closed;
+}
+"""
+
+
+async def _dismiss_consent(page: Page) -> None:
+    """Clear anything covering the page: a cookie banner, a sign-in nag, a promo panel.
+
+    Never fails the caller. Closing an overlay is always safe -- it commits nothing --
+    and it is the only way the page underneath becomes readable and clickable at all.
+    """
+
+    for script in (_CONSENT_SCRIPT, _OVERLAY_SCRIPT):
+        try:
+            await page.evaluate(script)
+        except Exception:
+            continue
+
+
+async def _click_through_overlays(page: Page, selector: str, timeout_ms: int) -> None:
+    """Click the chosen element, even when something is drawn on top of it.
+
+    Playwright's click refuses when another element would receive the press. That check
+    is right for a person's cursor and wrong here: the run picked this element out of a
+    snapshot it could read, and a dialog, a sticky footer, or a chat bubble sitting over
+    it is not a reason to give up. A live booking run lost every one of its 24 steps to
+    "the page did not respond" while a location dialog covered the service list. So the
+    ordinary click is tried first, and only if it is refused is the click dispatched on
+    the element itself.
+    """
+
+    element = page.locator(selector).first
+    try:
+        await element.scroll_into_view_if_needed(timeout=5_000)
+    except Exception:
+        pass
+    try:
+        await element.click(timeout=timeout_ms)
+        return
+    except Exception as error:
+        if _is_navigation_race(error):
+            raise
+    await element.evaluate("element => element.click()")
+
+
 async def _fill_like_a_person(page: Page, selector: str, value: str, timeout_ms: int) -> None:
     """Type into a field with real key events, then commit any suggestion it opened.
 
@@ -162,6 +266,9 @@ class BrowserRuntime:
     page_instance_id: UUID = field(default_factory=uuid4)
     sequence_no: int = 0
     selector_cache: dict[str, str] = field(default_factory=dict)
+    # Which frame each candidate was read from, by frame URL. Empty means the main
+    # document. A selector is only meaningful inside the frame that produced it.
+    frame_cache: dict[str, str] = field(default_factory=dict)
     io_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     active_callbacks: int = 0
     callbacks_idle: asyncio.Event = field(default_factory=asyncio.Event)
@@ -241,6 +348,12 @@ class BrowserController:
                     page=page,
                 )
                 self._runtimes[web_session_id] = runtime
+                # Booking widgets, checkouts, and sign-ins routinely open a second tab.
+                # Without following it the run keeps driving the storefront it came from
+                # and repeats the errand from the top -- a live haircut run cycled
+                # location -> service six times while the real booking sat in a tab
+                # nobody was looking at.
+                context.on("page", lambda opened: self._follow_new_tab(runtime, opened))
                 await self._install_page(runtime, page)
                 if page.url != start_url:
                     await page.goto(start_url, wait_until="domcontentloaded", timeout=45_000)
@@ -309,17 +422,50 @@ class BrowserController:
 
     async def snapshot(self, web_session_id: UUID) -> list[ElementCandidate]:
         runtime = self._require(web_session_id)
+        await _dismiss_consent(runtime.page)
         raw = await self._evaluate_settled(runtime.page, EXTRACT_CANDIDATES_SCRIPT)
+        # A booking site renders its controls from script after `domcontentloaded`, so
+        # the first look can find an empty document. A planner given nothing has no
+        # action to choose and the run dies on step one; waiting a few seconds for the
+        # page to draw itself is what makes it a run at all.
+        for _ in range(4):
+            if raw:
+                break
+            try:
+                await runtime.page.wait_for_timeout(1_500)
+            except Exception:
+                break
+            await _dismiss_consent(runtime.page)
+            raw = await self._evaluate_settled(runtime.page, EXTRACT_CANDIDATES_SCRIPT)
         candidates: list[ElementCandidate] = []
         selector_cache: dict[str, str] = {}
-        for item in raw or []:
-            try:
-                candidate = ElementCandidate.model_validate(item["candidate"])
-            except (KeyError, ValueError):
+        frame_cache: dict[str, str] = {}
+
+        def collect(rows: Any, frame_url: str) -> None:
+            for item in rows or []:
+                try:
+                    candidate = ElementCandidate.model_validate(item["candidate"])
+                except (KeyError, ValueError):
+                    continue
+                candidates.append(candidate)
+                selector_cache[candidate.candidate_id] = str(item.get("css_path") or "")
+                frame_cache[candidate.candidate_id] = frame_url
+
+        collect(raw, "")
+        # Booking widgets and checkouts live in an iframe. Reading only the top document
+        # means the run sees the page that hosts the widget and never the widget itself,
+        # so it restarts the errand from the storefront on every step. A live booking run
+        # cycled location -> book -> service six times for exactly this reason.
+        for frame in runtime.page.frames:
+            if frame is runtime.page.main_frame:
                 continue
-            candidates.append(candidate)
-            selector_cache[candidate.candidate_id] = str(item.get("css_path") or "")
+            try:
+                collect(await frame.evaluate(EXTRACT_CANDIDATES_SCRIPT), frame.url)
+            except Exception:
+                # Cross-origin frames cannot be read, and a frame can detach mid-look.
+                continue
         runtime.selector_cache = selector_cache
+        runtime.frame_cache = frame_cache
         return candidates
 
     async def highlight(self, web_session_id: UUID, candidate_id: str) -> bool:
@@ -358,6 +504,9 @@ class BrowserController:
 
         runtime = self._require(web_session_id)
         page = runtime.page
+        # A target read from an iframe has to be acted on inside that same frame; the
+        # selector means nothing in the top document.
+        target_frame: Any = page
         started = datetime.now(UTC)
         selector: str | None = None
         if action in _TARGETED_ACTIONS:
@@ -366,22 +515,27 @@ class BrowserController:
             selector = runtime.selector_cache.get(candidate_id)
             if not selector:
                 return ActionOutcome(False, "the target is no longer on the page", started)
+            frame_url = runtime.frame_cache.get(candidate_id) or ""
+            if frame_url:
+                target_frame = next(
+                    (frame for frame in page.frames if frame.url == frame_url), page
+                )
         try:
             if action is AgentActionKind.CLICK:
                 assert selector is not None
-                await page.click(selector, timeout=timeout_ms)
+                await _click_through_overlays(target_frame, selector, timeout_ms)
             elif action is AgentActionKind.FILL:
                 assert selector is not None
-                await _fill_like_a_person(page, selector, value or "", timeout_ms)
+                await _fill_like_a_person(target_frame, selector, value or "", timeout_ms)
             elif action is AgentActionKind.SELECT:
                 assert selector is not None
-                await page.select_option(selector, value or "", timeout=timeout_ms)
+                await target_frame.select_option(selector, value or "", timeout=timeout_ms)
             elif action is AgentActionKind.CHECK:
                 assert selector is not None
-                await page.check(selector, timeout=timeout_ms)
+                await target_frame.check(selector, timeout=timeout_ms)
             elif action is AgentActionKind.PRESS:
                 assert selector is not None
-                await page.press(selector, value or "Enter", timeout=timeout_ms)
+                await target_frame.press(selector, value or "Enter", timeout=timeout_ms)
             elif action is AgentActionKind.NAVIGATE:
                 if not url:
                     return ActionOutcome(False, "no address was supplied", started)
@@ -483,6 +637,24 @@ class BrowserController:
     async def stop_all(self, reason: str = "backend_shutdown") -> None:
         for session_id in list(self._runtimes):
             await self.stop(session_id, reason)
+
+    def _follow_new_tab(self, runtime: BrowserRuntime, opened: Page) -> None:
+        """Make a newly opened tab the one the run is working in."""
+
+        async def switch() -> None:
+            try:
+                await opened.wait_for_load_state("domcontentloaded", timeout=15_000)
+            except Exception:
+                pass
+            runtime.page = opened
+            runtime.selector_cache = {}
+            runtime.frame_cache = {}
+            try:
+                await self._install_page(runtime, opened)
+            except Exception:
+                logger.debug("Could not instrument the newly opened tab.")
+
+        asyncio.create_task(switch())
 
     async def _install_page(self, runtime: BrowserRuntime, page: Page) -> None:
         async def emit(_source: Any, payload: Any) -> None:

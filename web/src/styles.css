@@ -5454,6 +5454,20 @@ tbody tr:last-child td {
   gap: 14px;
 }
 
+/* Shown in place of the ready tasks when they could not be fetched, so an unreachable
+   backend says so and offers a retry instead of leaving placeholder cards up for good. */
+.demo-grid__notice {
+  display: flex;
+  margin-bottom: 26px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.demo-grid__notice p {
+  margin: 0;
+}
+
 .demo-card {
   display: flex;
   padding: 22px;

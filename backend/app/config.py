@@ -82,11 +82,17 @@ class Settings(BaseSettings):
     recall_cache_seconds: float = Field(default=15.0, ge=0, le=300)
     recall_embedding_model: str = "snowflake-arctic-embed-m-v1.5"
 
-    autopilot_max_steps: int = Field(default=24, ge=1, le=120)
+    autopilot_max_steps: int = Field(default=60, ge=1, le=120)
     proactive_scan_interval_seconds: float = Field(default=60.0, ge=5, le=3600)
     proactive_max_overdue_intervals: float = Field(default=3.0, ge=1, le=12)
 
     action_planner_provider: Literal["local", "snowflake_cortex"] = "local"
+    # Deciding the next click on a live page is the hardest reasoning in the product and
+    # the one place a weak model shows: on Haiku a run mistook a location dialog for the
+    # service list and clicked past "See services". The recall and guidance paths stay on
+    # the cheaper model -- summarising what already happened does not need this.
+    action_planner_model: str = "claude-sonnet-4-5"
+    action_planner_max_tokens: int = Field(default=1024, ge=64, le=8192)
     guidance_model_provider: Literal["snowflake_cortex"] = "snowflake_cortex"
     guidance_model: str = "claude-haiku-4-5"
     guidance_model_rate_card_version: str = "snowflake-cortex-any-region-2026-08-07"

@@ -42,6 +42,23 @@ EXTRACT_CANDIDATES_SCRIPT = r"""
     }
     return normalize(element.innerText || element.textContent || element.getAttribute('title'));
   };
+  // A repeated bare label -- "Book", "Select", "Add" -- says nothing about which row it
+  // belongs to, and a planner faced with four identical "Book" buttons cannot pick the
+  // haircut. Borrow the text of the smallest enclosing block that says more.
+  const GENERIC = /^(book|book now|select|choose|add|add to cart|more|details|view|reserve|go)$/i;
+  const withRowContext = (element, name) => {
+    if (!name || !GENERIC.test(name)) return name;
+    let node = element.parentElement;
+    let best = '';
+    for (let depth = 0; depth < 8 && node; depth += 1) {
+      const text = normalize(node.innerText || '');
+      // Enough to name the row -- a price and a duration alone are not.
+      if (text.length >= 40) return normalize(`${name}: ${text}`);
+      if (text.length > best.length) best = text;
+      node = node.parentElement;
+    }
+    return best ? normalize(`${name}: ${best}`) : name;
+  };
   const sensitivity = (element) => {
     const type = (element.getAttribute('type') || '').toLowerCase();
     const metadata = [element.getAttribute('name'), element.getAttribute('id'), element.getAttribute('autocomplete'), element.getAttribute('aria-label')]
@@ -93,7 +110,30 @@ EXTRACT_CANDIDATES_SCRIPT = r"""
     }
     return id;
   };
-  return [...document.querySelectorAll(interactive)].filter(visible).slice(0, MAX_CANDIDATES).map((element, index) => {
+  // What is on screen comes first, then everything else in document order. A busy
+  // storefront puts well over MAX_CANDIDATES links in its header, photo strip, and
+  // footer, so a plain document-order slice hands back nothing but site chrome and the
+  // buttons the task needs are never offered -- which reads to a planner as a page it
+  // has not scrolled far enough down, and it scrolls until the run runs out of steps.
+  const onScreen = (element) => {
+    const rect = element.getBoundingClientRect();
+    return rect.bottom > 0 && rect.top < (window.innerHeight || 0);
+  };
+  // When a modal is open, it is the only thing the page will let anybody interact with.
+  // Offering the controls behind it is how a run ends up searching for the next grocery
+  // item while a "pickup or delivery?" dialog it never answered sits over the screen.
+  const modal = [...document.querySelectorAll('[aria-modal="true"], [role="dialog"], [role="alertdialog"]')]
+    .filter((element) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return rect.width > 200 && rect.height > 80
+        && style.visibility !== 'hidden' && style.display !== 'none';
+    })
+    .pop() || null;
+  const root = modal || document;
+  const found = [...root.querySelectorAll(interactive)].filter(visible);
+  const ordered = [...found.filter(onScreen), ...found.filter((el) => !onScreen(el))];
+  return ordered.slice(0, MAX_CANDIDATES).map((element, index) => {
     const rect = element.getBoundingClientRect();
     const href = element instanceof HTMLAnchorElement && element.href ? new URL(element.href) : null;
     const tag = allowedTags.has(element.tagName.toLowerCase()) ? element.tagName.toLowerCase() : 'div';
@@ -101,7 +141,7 @@ EXTRACT_CANDIDATES_SCRIPT = r"""
       candidate: {
         candidate_id: makeId(element, index),
         role: element.getAttribute('role') || implicitRole(element),
-        accessible_name: accessibleName(element) || null,
+        accessible_name: withRowContext(element, accessibleName(element)) || null,
         visible_text: normalize(element.innerText || element.textContent) || null,
         tag_name: tag,
         input_type: element instanceof HTMLInputElement ? (element.type || 'text').slice(0, 32) : null,

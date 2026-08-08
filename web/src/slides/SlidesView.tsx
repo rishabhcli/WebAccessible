@@ -16,6 +16,22 @@ const SLIDES = [
   "One request. A visible run. Human control.",
 ] as const;
 
+// The second deck: rebuilt from `scripts/build-slides2.py`, dark themed, and carrying a
+// real screenshot of a run rather than an illustration. Served at /slides2 so the
+// original deck stays exactly where anyone linked it.
+const SLIDES2 = [
+  "WebAccessible",
+  "The web got harder exactly as it became mandatory",
+  "Say the errand. Watch it happen.",
+  "Mid-errand: a live run",
+  "Read. Plan. Check. Narrate.",
+  "Where autonomy stops",
+  "The caregiver console",
+  "Memory and reminders",
+  "The stack",
+  "One sentence. A visible run.",
+] as const;
+
 type DemoKind = "dmv" | "groceries" | "haircut";
 
 const DEMOS: Record<DemoKind, {
@@ -64,9 +80,9 @@ const DEMOS: Record<DemoKind, {
   },
 };
 
-function readInitialSlide() {
+function readInitialSlide(count: number) {
   const requested = Number(new URLSearchParams(window.location.search).get("slide"));
-  return Number.isInteger(requested) && requested >= 1 && requested <= SLIDES.length ? requested - 1 : 0;
+  return Number.isInteger(requested) && requested >= 1 && requested <= count ? requested - 1 : 0;
 }
 
 function DemoProgressCapture({ kind }: { kind: DemoKind }) {
@@ -119,19 +135,22 @@ function DemoProgressCapture({ kind }: { kind: DemoKind }) {
 
 export function SlidesView() {
   const capture = window.location.pathname.match(/^\/slides\/demo\/(dmv|groceries|haircut)\/?$/)?.[1] as DemoKind | undefined;
-  const [index, setIndex] = useState(readInitialSlide);
+  const second = window.location.pathname.startsWith("/slides2");
+  const titles = second ? SLIDES2 : SLIDES;
+  const base = second ? "/slides2/deck" : "/slides/deck";
+  const [index, setIndex] = useState(() => readInitialSlide(second ? SLIDES2.length : SLIDES.length));
 
-  const image = useMemo(() => `/slides/deck/slide-${String(index + 1).padStart(2, "0")}.png`, [index]);
+  const image = useMemo(() => `${base}/slide-${String(index + 1).padStart(2, "0")}.png`, [base, index]);
 
   useEffect(() => {
     if (capture) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "ArrowLeft") setIndex((current) => Math.max(0, current - 1));
-      if (event.key === "ArrowRight" || event.key === " ") setIndex((current) => Math.min(SLIDES.length - 1, current + 1));
+      if (event.key === "ArrowRight" || event.key === " ") setIndex((current) => Math.min(titles.length - 1, current + 1));
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [capture]);
+  }, [capture, titles.length]);
 
   useEffect(() => {
     if (capture) return;
@@ -147,16 +166,18 @@ export function SlidesView() {
       <header className="slides-view__toolbar">
         <div className="slides-view__identity">
           <span className="slides-view__mark">WA</span>
-          <div><strong>WebAccessible</strong><span>Application overview · unlisted</span></div>
+          <div><strong>WebAccessible</strong><span>{second ? "Application overview · deck two" : "Application overview · unlisted"}</span></div>
         </div>
-        <a className="slides-view__download" download href="/slides/WebAccessible-Application-Overview.pptx">
-          <Download aria-hidden="true" size={18} /> Download PowerPoint
-        </a>
+        {second ? null : (
+          <a className="slides-view__download" download href="/slides/WebAccessible-Application-Overview.pptx">
+            <Download aria-hidden="true" size={18} /> Download PowerPoint
+          </a>
+        )}
       </header>
 
       <div className="slides-view__workspace">
         <aside aria-label="Slides" className="slides-view__rail">
-          {SLIDES.map((title, slideIndex) => (
+          {titles.map((title, slideIndex) => (
             <button
               aria-label={`Slide ${slideIndex + 1}: ${title}`}
               aria-current={slideIndex === index ? "page" : undefined}
@@ -166,17 +187,17 @@ export function SlidesView() {
               type="button"
             >
               <span>{slideIndex + 1}</span>
-              <img alt="" loading={slideIndex < 3 ? "eager" : "lazy"} src={`/slides/deck/slide-${String(slideIndex + 1).padStart(2, "0")}.png`} />
+              <img alt="" loading={slideIndex < 3 ? "eager" : "lazy"} src={`${base}/slide-${String(slideIndex + 1).padStart(2, "0")}.png`} />
             </button>
           ))}
         </aside>
 
-        <section aria-label={`Slide ${index + 1}: ${SLIDES[index]}`} className="slides-view__stage">
-          <div className="slides-view__canvas"><img alt={`Slide ${index + 1}: ${SLIDES[index]}`} src={image} /></div>
+        <section aria-label={`Slide ${index + 1}: ${titles[index]}`} className="slides-view__stage">
+          <div className="slides-view__canvas"><img alt={`Slide ${index + 1}: ${titles[index]}`} src={image} /></div>
           <div className="slides-view__controls">
             <button aria-label="Previous slide" disabled={index === 0} onClick={() => setIndex((current) => current - 1)} type="button"><ChevronLeft aria-hidden="true" size={22} /></button>
-            <span><strong>{index + 1}</strong> / {SLIDES.length}</span>
-            <button aria-label="Next slide" disabled={index === SLIDES.length - 1} onClick={() => setIndex((current) => current + 1)} type="button"><ChevronRight aria-hidden="true" size={22} /></button>
+            <span><strong>{index + 1}</strong> / {titles.length}</span>
+            <button aria-label="Next slide" disabled={index === titles.length - 1} onClick={() => setIndex((current) => current + 1)} type="button"><ChevronRight aria-hidden="true" size={22} /></button>
           </div>
         </section>
       </div>

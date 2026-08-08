@@ -21,6 +21,10 @@ const CATEGORY_ICON = {
  */
 export function TaskLauncher({ onStarted }: TaskLauncherProps) {
   const [demos, setDemos] = useState<DemoTask[]>([]);
+  // Loading and unreachable are told apart deliberately. Swallowing the failure left the
+  // placeholder cards on screen for good, so a stopped backend looked exactly like a slow
+  // one and there was nothing on the page to act on.
+  const [demosState, setDemosState] = useState<"loading" | "ready" | "unavailable">("loading");
   const [prompt, setPrompt] = useState("");
   const [startUrl, setStartUrl] = useState("");
   const [startingId, setStartingId] = useState<string>();
@@ -30,9 +34,20 @@ export function TaskLauncher({ onStarted }: TaskLauncherProps) {
   const [recall, setRecall] = useState<EpisodeAnswer>();
   const [recalling, setRecalling] = useState(false);
 
-  useEffect(() => {
-    void api.listDemos().then(setDemos).catch(() => setDemos([]));
+  const loadDemos = useCallback(async () => {
+    setDemosState("loading");
+    try {
+      setDemos(await api.listDemos());
+      setDemosState("ready");
+    } catch {
+      setDemos([]);
+      setDemosState("unavailable");
+    }
   }, []);
+
+  useEffect(() => {
+    void loadDemos();
+  }, [loadDemos]);
 
   const loadReminders = useCallback(async () => {
     try {
@@ -162,8 +177,19 @@ export function TaskLauncher({ onStarted }: TaskLauncherProps) {
             </button>
           );
         })}
-        {demos.length === 0 ? Array.from({ length: 3 }, (_, index) => <div className="demo-card demo-card--skeleton" key={index} />) : null}
+        {demosState === "loading" ? Array.from({ length: 3 }, (_, index) => <div className="demo-card demo-card--skeleton" key={index} />) : null}
       </section>
+
+      {demosState === "unavailable" ? (
+        <div className="demo-grid__notice">
+          <p className="form-error" role="alert">
+            The ready tasks could not be loaded just now. You can still type what you need below.
+          </p>
+          <button className="button button--secondary button--small" onClick={() => void loadDemos()} type="button">
+            Try again
+          </button>
+        </div>
+      ) : null}
 
       <form className="prompt-box" onSubmit={submitPrompt}>
         <label htmlFor="agent-prompt">

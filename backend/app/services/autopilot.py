@@ -61,23 +61,22 @@ _BLOCKED_SUMMARY = (
     "Nothing was changed."
 )
 
-# Actions that change money or disclose identity are the only ones that stop the run.
+# Only what is irreversible stops a run: money leaving an account, and data being deleted.
+#
+# Identity, suspicious, and unknown are deliberately absent. A planner labels an ordinary
+# click -- a DMV service picker, "Renew your driver's license" -- as one of those purely
+# from the words on the button, and every one of those confirmations stranded the run on
+# the errand it exists to finish. Anything not named here proceeds.
 _STOPPING_CLASSIFICATIONS = frozenset(
     {
         SafetyClassification.MONEY,
-        SafetyClassification.IDENTITY,
         SafetyClassification.DELETION,
     }
 )
+# Fields the run never types into by itself: a password box, a card number, an account
+# number. This is about what a field holds, not what a button is named.
 _STOPPING_FLAGS = frozenset(
     {SensitivityFlag.PASSWORD, SensitivityFlag.PAYMENT, SensitivityFlag.BANK}
-)
-# A demo's identity is invented, so "sharing personal details" discloses nothing about
-# anybody and must not interrupt the run -- a planner will label a plain click on
-# "Renew your driver's license" as identity purely from the words in it. Money,
-# deletion, and passwords are unaffected: those commit something real either way.
-_DEMO_STOPPING_CLASSIFICATIONS = frozenset(
-    {SafetyClassification.MONEY, SafetyClassification.DELETION}
 )
 _COMPLETE_MARKERS = (
     "task complete",
@@ -121,10 +120,37 @@ _LOW_VALUE_MARKERS = (
     "subscribe",
     "download the app",
 )
+# Controls a run must never touch, whatever a planner proposes. Signing in needs a
+# password the agent will not type, and a membership or subscription spends the
+# participant's money on something they did not ask for -- a grocery run was offered
+# "Try Target Circle 360" on every screen. Withholding them from the planner is better
+# than refusing afterwards: it cannot stall on a door it was never shown.
+_NEVER_OFFERED = (
+    "sign in",
+    "sign-in",
+    "log in",
+    "login",
+    "create account",
+    "create an account",
+    "sign up",
+    "subscribe",
+    "subscription",
+    "membership",
+    "free trial",
+    "start trial",
+    "circle 360",
+    "join now",
+)
 # Input types that are controls rather than places to type text.
 _NON_TEXT_INPUTS = frozenset(
     {"button", "checkbox", "hidden", "password", "radio", "reset", "submit"}
 )
+# How often one page may be scrolled before the run has to work with what is on screen.
+# Scrolling is the one action that always succeeds and never commits to anything, so a
+# planner hunting for something it cannot recognise will do it until the budget is gone --
+# a live run on the DMV queue spent 23 consecutive steps scrolling a list of field offices.
+# Four is enough to read down a long list and small enough to leave the run steps to act.
+_MAX_SCROLLS_PER_PAGE = 4
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 _EMAIL_PATTERN = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 _ZIP_PATTERN = re.compile(r"\b\d{5}(?:-\d{4})?\b")
@@ -159,6 +185,16 @@ class AgentRun:
     # button until it runs out of steps. Cleared whenever the page actually changes.
     page_key: str = ""
     tried_on_page: set[str] = field(default_factory=set)
+    # Every label this run has ever clicked, across pages. `tried_on_page` is cleared
+    # whenever the page changes, which is right for retrying a control on a new screen
+    # and wrong for the place check: a run that bounces between a storefront and its
+    # booking widget gets a fresh page key each time and would redo the same redirect
+    # forever.
+    clicked_labels: set[str] = field(default_factory=set)
+    # Scrolls spent on the current page. A scroll has no candidate id and no url, so
+    # `tried_on_page` has nothing to hold it by, and the page key does not change when the
+    # viewport moves -- counting is the only thing that can bound it. Reset with the page.
+    scrolls_on_page: int = 0
     # Questions a demo planner asked and the persona already answers.
     answered_questions: list[str] = field(default_factory=list)
 
@@ -298,19 +334,32 @@ class AutopilotService:
                         plan.narration or "That is done.",
                     )
                     return
-                if (
-                    plan.action is AgentActionKind.ASK
-                    and run.persona is not None
-                    # Bounded: skipping does not add a step, so an planner that only ever
-                    # asks would otherwise spin here forever.
-                    and len(run.answered_questions) < 3
-                ):
-                    # A demo has no one to ask. Every detail it could want is in the
-                    # persona, so the question goes back into the planner's own history
-                    # answered rather than out to the participant. The step ceiling
-                    # bounds this if a planner insists on asking anyway.
+                if plan.action is AgentActionKind.ASK and run.persona is not None:
+                    # A demo never asks. It runs end to end or it does not ship: the
+                    # person watching has no more context than the run does, and a
+                    # question in the middle of a demo is a stall wearing a polite face.
+                    # The question goes back into the planner's own history answered and
+                    # the deterministic planner takes the step if the planner will not.
                     run.answered_questions.append(plan.narration)
-                    continue
+                    forced = await LocalActionPlanner().plan(
+                        prompt=run.prompt,
+                        candidates=candidates,
+                        history=[step.narration for step in run.steps[-8:]],
+                        page_title=run.page_title,
+                        origin=run.origin,
+                    )
+                    if forced is None:
+                        # Skipping costs no step, so this needs its own floor or a
+                        # planner that only ever asks would spin here forever.
+                        if len(run.answered_questions) > 6:
+                            await self._finish(
+                                run,
+                                AgentRunState.FAILED,
+                                "I got as far as I could on this page and stopped.",
+                            )
+                            return
+                        continue
+                    plan = forced
                 if plan.action is AgentActionKind.ASK:
                     await self._pause(
                         run,
@@ -346,6 +395,7 @@ class AutopilotService:
         self,
         run: AgentRun,
         candidates: Sequence[ElementCandidate],
+        no_scroll: bool = False,
     ) -> AgentPlan | None:
         # A demo types its own details before asking a planner anything. Neither planner
         # can invent a date of birth, and an empty required field is exactly what stalls
@@ -360,10 +410,15 @@ class AutopilotService:
             candidate
             for candidate in candidates
             if _normalized(_candidate_label(candidate)) not in run.tried_on_page
+            and not _is_never_offered(candidate)
         ]
         # An empty list still goes to the planner: a finished page is recognised from its
         # title, and that verdict is the planner's to give.
         history = [f"{step.step_no}. {step.narration}" for step in run.steps[-8:]]
+        # Once this page's scrolls are spent, scrolling is off the table however much the
+        # planner would prefer it -- the whole page has been read by now.
+        exhausted = run.scrolls_on_page >= _MAX_SCROLLS_PER_PAGE
+        no_scroll = no_scroll or exhausted
         goal = run.prompt
         if run.persona is not None:
             goal = f"{run.prompt}\n\n{persona_brief(run.persona)}"
@@ -372,6 +427,12 @@ class AutopilotService:
                     f'\n\nYou already asked "{question}" — the answer is in the details '
                     "above. Do not ask again; act on them."
                 )
+        if no_scroll:
+            goal += (
+                f"\n\nYou have already scrolled this page {run.scrolls_on_page} times and it "
+                "revealed nothing new. Choose a control from the list below instead; do not "
+                "scroll."
+            )
         try:
             plan = await asyncio.wait_for(
                 self.planner.plan(
@@ -391,15 +452,69 @@ class AutopilotService:
                 plan = AgentPlan.model_validate(plan)
             except Exception:
                 return None
+        if plan.action is AgentActionKind.SCROLL and not no_scroll:
+            # Scrolling is free, so a planner that cannot find what it wants will do it
+            # forever -- a live run spent all 24 steps scrolling one salon page. Two in a
+            # row is a look down the page; a third means the run has to work with what is
+            # on screen, so it is asked again with scrolling off the table.
+            recent = [step.action for step in run.steps[-2:]]
+            if len(recent) == 2 and all(item is AgentActionKind.SCROLL for item in recent):
+                return await self._plan(run, candidates, no_scroll=True)
+        if plan.action is AgentActionKind.SCROLL and no_scroll:
+            # Told not to scroll and it scrolled anyway. The deterministic planner picks
+            # the control on this page that best matches the task, which is a better last
+            # word than another wasted step.
+            fallback = await LocalActionPlanner().plan(
+                prompt=goal,
+                candidates=offered,
+                history=history,
+                page_title=run.page_title,
+                origin=run.origin,
+            )
+            if fallback is not None:
+                plan = fallback
+            elif exhausted:
+                # The hint alone is not enough: a planner that ignores it, on a page the
+                # deterministic planner will not commit to either, is what turned one DMV
+                # page into 23 identical scrolls. The page has been read; saying so is
+                # more honest than spending the rest of the run looking again.
+                return None
         if plan.action is AgentActionKind.CLICK:
             target = next(
                 (item for item in offered if item.candidate_id == plan.candidate_id),
                 None,
             )
             if target is not None:
+                named = _named_in_goal(run.prompt, target, offered)
+                if named is not None and _normalized(_candidate_label(named)) in run.clicked_labels:
+                    # Already chosen here. Insisting on it again is how a booking run got
+                    # stuck: it picked the haircut, the place check pulled it back to the
+                    # shop's own name, and the two traded the run between them until the
+                    # steps ran out.
+                    named = None
+                if named is not None:
+                    # The narration moves with the click, so the person watching is told
+                    # what is actually being chosen and not what was proposed first.
+                    label = _candidate_label(named)
+                    plan = plan.model_copy(
+                        update={
+                            "candidate_id": named.candidate_id,
+                            "narration": f"Choosing {label}.",
+                            # Two rows of one list do the same kind of thing, so a money
+                            # or identity verdict carries across rather than being
+                            # quietly downgraded to safe.
+                            "safety_classification": (
+                                plan.safety_classification
+                                if plan.safety_classification is not SafetyClassification.SAFE
+                                else _candidate_safety(named, label)
+                            ),
+                        }
+                    )
+                    target = named
                 # Recorded before the click, not after. A control that fails outright
                 # would otherwise be chosen again on every remaining step.
                 run.tried_on_page.add(_normalized(_candidate_label(target)))
+                run.clicked_labels.add(_normalized(_candidate_label(target)))
         elif plan.action is AgentActionKind.FILL and plan.candidate_id:
             target = next(
                 (item for item in offered if item.candidate_id == plan.candidate_id),
@@ -426,6 +541,8 @@ class AutopilotService:
             # Same trap by another route: a live run spent five steps re-navigating to
             # one URL that kept returning the same page.
             run.tried_on_page.add(_normalized(plan.url))
+        elif plan.action is AgentActionKind.SCROLL:
+            run.scrolls_on_page += 1
         return plan
 
     def _persona_fill(
@@ -484,12 +601,13 @@ class AutopilotService:
                     "Please sign in yourself in the window, then I will carry on."
                 ),
             )
-        stopping = (
-            _DEMO_STOPPING_CLASSIFICATIONS
-            if run.persona is not None
-            else _STOPPING_CLASSIFICATIONS
-        )
-        if plan.safety_classification in stopping or flags & _STOPPING_FLAGS:
+        # A curated demo runs entirely on the invented persona in `domain.persona`: no real
+        # money, no real identity, no real account. There is nothing behind a confirmation
+        # for the person watching to protect, and stopping mid-errand is the one outcome
+        # that makes a demo pointless. Past the password check, a demo runs to the end.
+        if run.persona is not None:
+            return None
+        if plan.safety_classification in _STOPPING_CLASSIFICATIONS or flags & _STOPPING_FLAGS:
             return SafetyPresentation(
                 classification=plan.safety_classification,
                 message=(
@@ -542,9 +660,11 @@ class AutopilotService:
         run.blocked = bool(getattr(state, "blocked", False))
         key = f"{run.origin}|{run.redacted_path}|{run.page_title}"
         if key != run.page_key:
-            # A genuinely new page. Everything is worth trying again here.
+            # A genuinely new page. Everything is worth trying again here, including
+            # reading down it.
             run.page_key = key
             run.tried_on_page.clear()
+            run.scrolls_on_page = 0
 
     async def _pause(self, run: AgentRun, presentation: SafetyPresentation) -> None:
         run.state = AgentRunState.NEEDS_CONFIRMATION
@@ -667,8 +787,8 @@ class LocalActionPlanner:
             return None
         # A button labelled "Submit" is not a risk in itself -- it is how a service
         # selection, a search, and a date choice all advance. What matters is what the
-        # button does, which `_candidate_safety` decides; money, identity, and deletion
-        # still stop the run from `_stopping_reason`.
+        # button does, which `_candidate_safety` decides; money and deletion still stop
+        # the run from `_stopping_reason`.
         return AgentPlan(
             action=AgentActionKind.CLICK,
             candidate_id=candidate.candidate_id,
@@ -676,6 +796,15 @@ class LocalActionPlanner:
             safety_classification=_candidate_safety(candidate, label),
             confidence=min(0.98, 0.65 + score / 40),
         )
+
+
+def _is_never_offered(candidate: ElementCandidate) -> bool:
+    """Whether this control is a sign-in or a paid membership, which a run never takes."""
+
+    label = _normalized(_candidate_label(candidate))
+    if not label:
+        return False
+    return any(marker in label for marker in _NEVER_OFFERED)
 
 
 def _candidate_label(candidate: ElementCandidate) -> str:
@@ -693,6 +822,105 @@ def _significant_tokens(value: str) -> set[str]:
         for token in _TOKEN_PATTERN.findall(value.casefold())
         if len(token) > 2 and token not in ignored
     }
+
+
+def _named_words(goal_words: Sequence[str], label: str) -> int:
+    """The longest run of words from `label` that the goal says in that same order.
+
+    A single shared word proves nothing: "1115 West Line Street" shares "line" with "get
+    in line", and that coincidence is what let a run treat the wrong office as a match. Two
+    words in a row is how a place or a service is actually named -- "san francisco",
+    "driver lic".
+    """
+
+    words = _TOKEN_PATTERN.findall(label.casefold())
+    longest = 0
+    for start in range(len(words)):
+        for end in range(start + 1, len(words) + 1):
+            phrase = words[start:end]
+            span = len(phrase)
+            if not any(
+                list(goal_words[at : at + span]) == phrase
+                for at in range(len(goal_words) - span + 1)
+            ):
+                # No longer phrase from this start can match either.
+                break
+            longest = max(longest, span)
+    return longest
+
+
+def _named_in_goal(
+    goal: str,
+    chosen: ElementCandidate,
+    offered: Sequence[ElementCandidate],
+) -> ElementCandidate | None:
+    """The option the goal actually names, when the plan picked a different one of them.
+
+    A page of field offices, stores, or clinics reads much the same to a planner whichever
+    row it takes: a live run joined the DMV queue at BISHOP, then at CHULA VISTA, for a task
+    that said San Francisco. When the goal names one of the rows outright and the plan took
+    a sibling row the goal never mentions, the goal wins. Nothing here knows about offices
+    or the DMV -- it compares the words in the task with the words on the controls.
+    """
+
+    label = _normalized(_candidate_label(chosen))
+    if not label:
+        return None
+    # "Continue", "Next", and "Submit" are how a page advances and name no place by design.
+    # Redirecting one of those would break the very steps that make progress.
+    if any(marker in label for marker in _ACTION_MARKERS):
+        return None
+    goal_words = _TOKEN_PATTERN.findall(goal.casefold())
+    siblings = [
+        candidate
+        for candidate in offered
+        if candidate.visible
+        and candidate.enabled
+        and candidate.role == chosen.role
+        and candidate.tag_name == chosen.tag_name
+    ]
+    # Two words in a row is the safe signal, but plenty of places are one word -- Chico,
+    # Fresno, Bakersfield. A single word counts only when the goal wrote it as a name and
+    # it belongs to exactly one row of the list. Both halves are needed: "line" appears in
+    # "1115 West Line Street" and in "get in line", which is the coincidence the two-word
+    # rule was guarding against, and it is lowercase in the task because it is not a place.
+    written_as_a_name = {word.casefold() for word in re.findall(r"\b[A-Z][a-z]{3,}\b", goal)}
+    distinctive = {
+        word
+        for word in goal_words
+        if word in written_as_a_name
+        and sum(
+            1
+            for candidate in siblings
+            if word in _TOKEN_PATTERN.findall(_normalized(_candidate_label(candidate)))
+        )
+        == 1
+    }
+
+    def strength(text: str) -> int:
+        run = _named_words(goal_words, text)
+        if run > 1:
+            return run
+        return 1 if distinctive & set(_TOKEN_PATTERN.findall(text)) else 0
+
+    if strength(label) > 0:
+        return None  # The plan already picked something the goal names.
+    best: tuple[int, ElementCandidate] | None = None
+    for candidate in offered:
+        if candidate.candidate_id == chosen.candidate_id:
+            continue
+        if not candidate.visible or not candidate.enabled:
+            continue
+        # Same role and tag name: another row of the same list, rather than some unrelated
+        # control that happens to mention the place.
+        if candidate.role != chosen.role or candidate.tag_name != chosen.tag_name:
+            continue
+        named = strength(_normalized(_candidate_label(candidate)))
+        if named < 1:
+            continue
+        if best is None or named > best[0]:
+            best = (named, candidate)
+    return best[1] if best is not None else None
 
 
 def _field_phrase(label: str) -> str:
